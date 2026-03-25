@@ -17,17 +17,18 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
             platform: win32
             arch: x64
-          - os: macos-13
-            platform: darwin
-            arch: x64
-          - os: macos-14
+          - os: macos-15
             platform: darwin
             arch: arm64
+          - os: macos-15
+            platform: darwin
+            arch: x64
           - os: ubuntu-latest
             platform: linux
             arch: x64
@@ -52,10 +53,21 @@ jobs:
           SRC=staging/node_modules/node-pty
           PKG=$RUNNER_TEMP/node-pty-pkg
 
-          mkdir -p "$PKG/lib" "$PKG/prebuilds"
+          mkdir -p "$PKG/lib"
           cp -r "$SRC/lib/"* "$PKG/lib/"
-          cp -r "$SRC/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}" "$PKG/prebuilds/"
           cp "$SRC/package.json" "$PKG/"
+
+          # Copy prebuilds (N-API binaries) if they exist for this platform
+          if [ -d "$SRC/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}" ]; then
+            mkdir -p "$PKG/prebuilds"
+            cp -r "$SRC/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}" "$PKG/prebuilds/"
+          fi
+
+          # Fallback: copy node-gyp build output (Linux builds from source)
+          if [ -d "$SRC/build/Release" ]; then
+            mkdir -p "$PKG/build/Release"
+            cp -r "$SRC/build/Release/"* "$PKG/build/Release/"
+          fi
 
           # Copy third_party (conpty DLLs) if present
           if [ -d "$SRC/third_party" ]; then
@@ -75,7 +87,6 @@ jobs:
           if command -v zip &> /dev/null; then
             zip -r "$GITHUB_WORKSPACE/node-pty-${{ matrix.platform }}-${{ matrix.arch }}.zip" .
           else
-            # Windows fallback
             powershell -Command "Compress-Archive -Path '.' -DestinationPath '${{ github.workspace }}/node-pty-${{ matrix.platform }}-${{ matrix.arch }}.zip'"
           fi
 

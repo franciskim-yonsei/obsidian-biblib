@@ -108,22 +108,25 @@ export class BinaryManager {
         return false;
       }
 
-      // Check platform-specific prebuild
+      // Check for native binary — prebuilds (win32/darwin) or build/Release (linux)
       const prebuildDir = this.path.join(this.nodePtyDir, "prebuilds", `${platform}-${arch}`);
-      const ptyNode = this.path.join(prebuildDir, "pty.node");
-      if (!this.fs.existsSync(ptyNode)) {
+      const buildReleaseDir = this.path.join(this.nodePtyDir, "build", "Release");
+      const hasPrebuild = this.fs.existsSync(this.path.join(prebuildDir, "pty.node"));
+      const hasBuildRelease = this.fs.existsSync(this.path.join(buildReleaseDir, "pty.node"));
+
+      if (!hasPrebuild && !hasBuildRelease) {
         this.setStatus("not-installed");
         return false;
       }
 
       // Platform-specific checks
-      if (platform === "win32") {
+      if (platform === "win32" && hasPrebuild) {
         const winpty = this.path.join(prebuildDir, "winpty.dll");
         if (!this.fs.existsSync(winpty)) {
           this.setStatus("not-installed");
           return false;
         }
-      } else {
+      } else if (platform !== "win32" && hasPrebuild) {
         const spawnHelper = this.path.join(prebuildDir, "spawn-helper");
         if (!this.fs.existsSync(spawnHelper)) {
           this.setStatus("not-installed");
