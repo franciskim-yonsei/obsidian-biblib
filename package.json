@@ -14,7 +14,7 @@
     "builtin-modules": "^4.0.0",
     "esbuild": "^0.25.0",
     "node-pty": "^1.0.0",
-    "obsidian": "latest",
+    "obsidian": "^1.7.0",
     "typescript": "^5.8.0"
   },
   "dependencies": {

@@ -40,6 +40,25 @@ function getShellArgs(shellPath: string): string[] {
   return [];
 }
 
+/**
+ * Validates that a shell path points to an existing file.
+ * Throws if the path does not exist or is not a file.
+ */
+function validateShellPath(shellPath: string): void {
+  const fs = (window as any).require("fs");
+  try {
+    const stat = fs.statSync(shellPath);
+    if (!stat.isFile()) {
+      throw new Error(`Shell path is not a file: ${shellPath}`);
+    }
+  } catch (err: any) {
+    if (err.code === "ENOENT") {
+      throw new Error(`Shell not found: ${shellPath}`);
+    }
+    throw err;
+  }
+}
+
 export class PtyManager {
   private ptyProcess: any = null;
   private nodePty: any = null;
@@ -59,6 +78,7 @@ export class PtyManager {
     this.nodePty = loadNodePty(this.pluginDir);
 
     const shell = shellPath || getDefaultShell();
+    validateShellPath(shell);
     const args = getShellArgs(shell);
 
     const ptyEnv = {

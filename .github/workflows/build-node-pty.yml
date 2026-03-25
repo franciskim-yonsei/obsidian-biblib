@@ -1,0 +1,111 @@
+name: Build node-pty binaries
+
+on:
+  workflow_call:
+    inputs:
+      node-pty-version:
+        required: false
+        type: string
+        default: "1.1.0"
+  workflow_dispatch:
+    inputs:
+      node-pty-version:
+        description: "node-pty version to package"
+        required: false
+        default: "1.1.0"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32
+            arch: x64
+          - os: macos-13
+            platform: darwin
+            arch: x64
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install node-pty
+        shell: bash
+        run: |
+          mkdir staging && cd staging
+          npm init -y
+          npm install node-pty@${{ inputs.node-pty-version || '1.1.0' }}
+
+      - name: Package node-pty
+        shell: bash
+        run: |
+          SRC=staging/node_modules/node-pty
+          PKG=$RUNNER_TEMP/node-pty-pkg
+
+          mkdir -p "$PKG/lib" "$PKG/prebuilds"
+          cp -r "$SRC/lib/"* "$PKG/lib/"
+          cp -r "$SRC/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}" "$PKG/prebuilds/"
+          cp "$SRC/package.json" "$PKG/"
+
+          # Copy third_party (conpty DLLs) if present
+          if [ -d "$SRC/third_party" ]; then
+            cp -r "$SRC/third_party" "$PKG/"
+          fi
+
+      - name: Apply Windows patch
+        if: matrix.platform == 'win32'
+        shell: bash
+        run: |
+          cp patches/windowsConoutConnection.js "$RUNNER_TEMP/node-pty-pkg/lib/windowsConoutConnection.js"
+
+      - name: Create zip
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/node-pty-pkg"
+          if command -v zip &> /dev/null; then
+            zip -r "$GITHUB_WORKSPACE/node-pty-${{ matrix.platform }}-${{ matrix.arch }}.zip" .
+          else
+            # Windows fallback
+            powershell -Command "Compress-Archive -Path '.' -DestinationPath '${{ github.workspace }}/node-pty-${{ matrix.platform }}-${{ matrix.arch }}.zip'"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-pty-${{ matrix.platform }}-${{ matrix.arch }}
+          path: node-pty-${{ matrix.platform }}-${{ matrix.arch }}.zip
+
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          echo "{" > checksums.json
+          first=true
+          for f in node-pty-*.zip; do
+            hash=$(sha256sum "$f" | cut -d' ' -f1)
+            if [ "$first" = true ]; then first=false; else echo "," >> checksums.json; fi
+            printf '  "%s": "%s"' "$f" "$hash" >> checksums.json
+          done
+          echo "" >> checksums.json
+          echo "}" >> checksums.json
+          cat checksums.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: checksums.json

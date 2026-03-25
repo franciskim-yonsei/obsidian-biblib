@@ -46,8 +46,11 @@ export class TerminalView extends ItemView {
     }
 
     // Resolve plugin directory for native module loading
-    const pluginDir = (this.plugin.app.vault.adapter as any).getBasePath()
-      + "/.obsidian/plugins/" + this.plugin.manifest.id;
+    const path = (window as any).require("path");
+    const pluginDir = path.join(
+      (this.plugin.app.vault.adapter as any).getBasePath(),
+      ".obsidian", "plugins", this.plugin.manifest.id
+    );
 
     // Create tab manager and first terminal
     this.tabManager = new TerminalTabManager(
@@ -55,7 +58,8 @@ export class TerminalView extends ItemView {
       terminalHostEl,
       this.plugin.settings,
       cwd,
-      pluginDir
+      pluginDir,
+      this.plugin.binaryManager
     );
     this.tabManager.createTab();
 

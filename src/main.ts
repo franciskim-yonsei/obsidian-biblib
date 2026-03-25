@@ -4,12 +4,23 @@ import { TerminalView } from "./terminal-view";
 import { TerminalSettingTab } from "./settings";
 import { DEFAULT_SETTINGS } from "./settings";
 import type { TerminalPluginSettings } from "./settings";
+import { BinaryManager } from "./binary-manager";
 
 export default class TerminalPlugin extends Plugin {
   settings: TerminalPluginSettings = DEFAULT_SETTINGS;
+  binaryManager!: BinaryManager;
 
   async onload(): Promise<void> {
     await this.loadSettings();
+
+    // Initialize binary manager
+    const path = (window as any).require("path");
+    const pluginDir = path.join(
+      (this.app.vault.adapter as any).getBasePath(),
+      ".obsidian", "plugins", this.manifest.id
+    );
+    this.binaryManager = new BinaryManager(pluginDir);
+    await this.binaryManager.checkInstalled();
 
     // Register the terminal view
     this.registerView(VIEW_TYPE_TERMINAL, (leaf: WorkspaceLeaf) => {

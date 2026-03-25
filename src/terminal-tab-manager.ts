@@ -4,6 +4,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { PtyManager } from "./pty-manager";
 import { getTheme } from "./themes";
 import type { TerminalPluginSettings } from "./settings";
+import type { BinaryManager } from "./binary-manager";
 
 export interface TerminalSession {
   id: string;
@@ -24,6 +25,7 @@ export class TerminalTabManager {
   private settings: TerminalPluginSettings;
   private cwd: string;
   private pluginDir: string;
+  private binaryManager: BinaryManager;
   private onActiveChange?: () => void;
 
   constructor(
@@ -32,6 +34,7 @@ export class TerminalTabManager {
     settings: TerminalPluginSettings,
     cwd: string,
     pluginDir: string,
+    binaryManager: BinaryManager,
     onActiveChange?: () => void
   ) {
     this.tabBarEl = tabBarEl;
@@ -39,6 +42,7 @@ export class TerminalTabManager {
     this.settings = settings;
     this.cwd = cwd;
     this.pluginDir = pluginDir;
+    this.binaryManager = binaryManager;
     this.onActiveChange = onActiveChange;
   }
 
@@ -58,7 +62,6 @@ export class TerminalTabManager {
       cursorBlink: this.settings.cursorBlink,
       scrollback: this.settings.scrollback,
       theme,
-      allowProposedApi: true,
     });
 
     const fitAddon = new FitAddon();
@@ -86,10 +89,18 @@ export class TerminalTabManager {
       const cols = terminal.cols || 80;
       const rows = terminal.rows || 24;
 
+      if (!this.binaryManager.isReady()) {
+        terminal.write("\r\n\x1b[33mTerminal binaries not installed.\x1b[0m\r\n");
+        terminal.write("Go to Settings \u2192 Terminal to download them.\r\n");
+        return;
+      }
+
       try {
         pty.spawn(this.settings.shellPath, this.cwd, cols, rows);
       } catch (err) {
-        terminal.write(`\r\nFailed to spawn shell: ${err}\r\n`);
+        const message = err instanceof Error ? err.message : "unknown error";
+        console.error("Terminal: failed to spawn shell", err);
+        terminal.write(`\r\nFailed to spawn shell: ${message}\r\n`);
         return;
       }
 

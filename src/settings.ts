@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type TerminalPlugin from "./main";
 import { THEME_NAMES } from "./themes";
 
@@ -33,6 +33,65 @@ export class TerminalSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
+
+    // --- Binary Management ---
+    containerEl.createEl("h3", { text: "Terminal Binary" });
+
+    const bm = this.plugin.binaryManager;
+    const { platform, arch } = bm.getPlatformInfo();
+    const version = bm.getVersion();
+    const status = bm.getStatus();
+
+    let statusDesc: string;
+    if (status === "ready") {
+      statusDesc = `Installed (v${version}) \u2014 ${platform}-${arch}`;
+    } else if (status === "error") {
+      statusDesc = `Error: ${bm.getStatusMessage()}`;
+    } else if (status === "downloading") {
+      statusDesc = `Downloading\u2026 ${bm.getStatusMessage()}`;
+    } else {
+      statusDesc = `Not installed \u2014 ${platform}-${arch}`;
+    }
+
+    new Setting(containerEl).setName("Status").setDesc(statusDesc);
+
+    new Setting(containerEl)
+      .setName("Download binaries")
+      .setDesc("Download platform-specific node-pty binaries from GitHub")
+      .addButton((btn) => {
+        btn
+          .setButtonText(status === "downloading" ? "Downloading\u2026" : "Download")
+          .setDisabled(status === "ready" || status === "downloading")
+          .onClick(async () => {
+            btn.setButtonText("Downloading\u2026");
+            btn.setDisabled(true);
+            try {
+              await bm.download();
+              new Notice("Terminal binaries installed successfully.");
+            } catch (err: any) {
+              const msg = err instanceof Error ? err.message : String(err);
+              new Notice(`Failed to download binaries: ${msg}`);
+            }
+            this.display();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Remove binaries")
+      .setDesc("Delete downloaded node-pty binaries")
+      .addButton((btn) => {
+        btn
+          .setButtonText("Remove")
+          .setDisabled(status !== "ready")
+          .onClick(async () => {
+            await bm.remove();
+            new Notice("Terminal binaries removed.");
+            this.display();
+          });
+      });
+
+    // --- Appearance & Behavior ---
+    containerEl.createEl("h3", { text: "Appearance & Behavior" });
 
     new Setting(containerEl)
       .setName("Shell path")
