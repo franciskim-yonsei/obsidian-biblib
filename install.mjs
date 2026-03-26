@@ -9,7 +9,7 @@ import { cpSync, mkdirSync, existsSync } from "fs";
 import { resolve, join } from "path";
 
 const vaultPath = process.argv[2] || "D:\\Lean Notes";
-const pluginDir = join(vaultPath, ".obsidian", "plugins", "lean-obsidian-terminal");
+const pluginDir = join(vaultPath, ".obsidian", "plugins", "lean-terminal");
 
 if (!existsSync(join(vaultPath, ".obsidian"))) {
   console.error(`Error: ${vaultPath} does not appear to be an Obsidian vault (no .obsidian folder)`);

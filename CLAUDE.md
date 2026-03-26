@@ -1,4 +1,4 @@
-# lean-obsidian-terminal
+# lean-terminal
 
 Obsidian desktop plugin providing an embedded PTY terminal panel using xterm.js + node-pty. No external windows.
 

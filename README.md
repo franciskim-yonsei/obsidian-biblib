@@ -1,4 +1,4 @@
-# Lean Obsidian Terminal
+# Lean Terminal
 
 An embedded terminal panel for [Obsidian](https://obsidian.md), powered by [xterm.js](https://xtermjs.org/) and [node-pty](https://github.com/nicedoc/node-pty). Run shell commands directly inside your vault workspace — no external windows needed.
 
