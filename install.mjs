@@ -38,26 +38,43 @@ const nodePtySrc = join(srcDir, "node_modules", "node-pty");
 const nodePtyDest = join(pluginDir, "node_modules", "node-pty");
 
 if (existsSync(nodePtySrc)) {
-  // Copy only the essential parts (lib + prebuilds + package.json)
+  // Copy lib first, then apply patch immediately (before prebuilds which may be locked)
   mkdirSync(join(nodePtyDest, "lib"), { recursive: true });
   cpSync(join(nodePtySrc, "lib"), join(nodePtyDest, "lib"), { recursive: true });
-  cpSync(join(nodePtySrc, "prebuilds"), join(nodePtyDest, "prebuilds"), { recursive: true });
-  cpSync(join(nodePtySrc, "package.json"), join(nodePtyDest, "package.json"));
 
-  // Copy third_party (conpty DLLs needed on Windows)
-  const thirdParty = join(nodePtySrc, "third_party");
-  if (existsSync(thirdParty)) {
-    cpSync(thirdParty, join(nodePtyDest, "third_party"), { recursive: true });
-  }
-
-  // Apply patch: replace Worker-based ConoutConnection with inline version
+  // Apply patch right away — if prebuilds copy fails below, the patch is still in place
   const patchSrc = join(srcDir, "patches", "windowsConoutConnection.js");
   if (existsSync(patchSrc)) {
     cpSync(patchSrc, join(nodePtyDest, "lib", "windowsConoutConnection.js"));
     console.log("  Applied ConoutConnection patch (no Worker threads)");
   }
 
-  console.log("  Copied node-pty (prebuilt N-API binaries)");
+  // Prebuilds, package.json, third_party — may be locked if Obsidian has terminal open
+  let binaryWarning = false;
+  try {
+    cpSync(join(nodePtySrc, "prebuilds"), join(nodePtyDest, "prebuilds"), { recursive: true });
+  } catch {
+    binaryWarning = true;
+  }
+  try {
+    cpSync(join(nodePtySrc, "package.json"), join(nodePtyDest, "package.json"));
+  } catch {
+    binaryWarning = true;
+  }
+  const thirdParty = join(nodePtySrc, "third_party");
+  if (existsSync(thirdParty)) {
+    try {
+      cpSync(thirdParty, join(nodePtyDest, "third_party"), { recursive: true });
+    } catch {
+      binaryWarning = true;
+    }
+  }
+
+  if (binaryWarning) {
+    console.log("  Copied node-pty lib + patch (binaries locked by Obsidian — existing binaries unchanged)");
+  } else {
+    console.log("  Copied node-pty (prebuilt N-API binaries)");
+  }
 } else {
   console.error("Error: node_modules/node-pty not found. Run 'npm install' first.");
   process.exit(1);

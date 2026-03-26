@@ -2,7 +2,7 @@ import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type TerminalPlugin from "./main";
 import { THEME_NAMES } from "./themes";
 
-export type NotifyMode = "off" | "blink" | "sound" | "both";
+export type NotificationSound = "beep" | "chime" | "ping" | "pop";
 
 export interface TerminalPluginSettings {
   shellPath: string;
@@ -12,7 +12,9 @@ export interface TerminalPluginSettings {
   cursorBlink: boolean;
   scrollback: number;
   defaultLocation: "right" | "bottom";
-  notifyOnCompletion: NotifyMode;
+  notifyOnCompletion: boolean;
+  notificationSound: NotificationSound;
+  notificationVolume: number;
 }
 
 export const DEFAULT_SETTINGS: TerminalPluginSettings = {
@@ -23,7 +25,9 @@ export const DEFAULT_SETTINGS: TerminalPluginSettings = {
   cursorBlink: true,
   scrollback: 5000,
   defaultLocation: "bottom",
-  notifyOnCompletion: "blink",
+  notifyOnCompletion: false,
+  notificationSound: "beep",
+  notificationVolume: 50,
 };
 
 export class TerminalSettingTab extends PluginSettingTab {
@@ -189,17 +193,41 @@ export class TerminalSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Notify on command completion")
-      .setDesc("Alert when a command finishes in a background tab (requires shell integration)")
+      .setDesc("Play a sound and show a notice when a command finishes in a background tab")
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.notifyOnCompletion).onChange(async (value) => {
+          this.plugin.settings.notifyOnCompletion = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Notification sound")
+      .setDesc("Sound to play when a background command finishes")
       .addDropdown((dropdown) => {
-        dropdown.addOption("off", "Off");
-        dropdown.addOption("blink", "Blink tab");
-        dropdown.addOption("sound", "Sound");
-        dropdown.addOption("both", "Blink + Sound");
-        dropdown.setValue(this.plugin.settings.notifyOnCompletion);
+        dropdown.addOption("beep", "Beep");
+        dropdown.addOption("chime", "Chime");
+        dropdown.addOption("ping", "Ping");
+        dropdown.addOption("pop", "Pop");
+        dropdown.setValue(this.plugin.settings.notificationSound);
         dropdown.onChange(async (value: string) => {
-          this.plugin.settings.notifyOnCompletion = value as NotifyMode;
+          this.plugin.settings.notificationSound = value as NotificationSound;
           await this.plugin.saveSettings();
         });
       });
+
+    new Setting(containerEl)
+      .setName("Notification volume")
+      .setDesc("Volume for the notification sound (0–100)")
+      .addSlider((slider) =>
+        slider
+          .setLimits(0, 100, 1)
+          .setValue(this.plugin.settings.notificationVolume)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.notificationVolume = value;
+            await this.plugin.saveSettings();
+          })
+      );
   }
 }

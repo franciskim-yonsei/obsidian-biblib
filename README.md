@@ -7,12 +7,14 @@ An embedded terminal panel for [Obsidian](https://obsidian.md), powered by [xter
 ## Features
 
 - Full PTY terminal (not a simple command runner) with interactive shell support
-- Multiple terminal tabs with rename support
+- Multiple terminal tabs with rename and color-coding support
 - Auto-detects your shell: PowerShell 7 / Windows PowerShell / cmd.exe on Windows, `$SHELL` on macOS/Linux
 - Four built-in color themes: Obsidian Dark, Obsidian Light, Monokai, Solarized Dark
 - Clickable URLs in terminal output
 - Auto-resize on panel resize
 - Opens at vault root by default
+- Clipboard support: Ctrl+V / Cmd+V paste, Ctrl+C / Cmd+C copy (with selection)
+- Notification sounds when background tab commands finish (4 sound types, adjustable volume)
 - Configurable: shell path, font size, font family, cursor blink, scrollback, panel location
 
 ## Installation
@@ -55,6 +57,9 @@ An embedded terminal panel for [Obsidian](https://obsidian.md), powered by [xter
 | Cursor blink | On | Whether the cursor blinks |
 | Scrollback | 5000 | Number of lines kept in scroll history |
 | Default location | Bottom | Where new terminal panels open (Bottom or Right) |
+| Notify on completion | Off | Sound + notice when a background tab command finishes |
+| Notification sound | Beep | Choose from Beep, Chime, Ping, or Pop |
+| Notification volume | 50 | Volume for notification sounds (0–100) |
 
 ## How It Works
 

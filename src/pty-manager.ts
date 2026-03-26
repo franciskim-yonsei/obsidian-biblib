@@ -85,7 +85,7 @@ export class PtyManager {
     validateShellPath(shell);
     const baseArgs = getShellArgs(shell);
 
-    // Inject shell integration hooks (OSC 133 sequences)
+    // Inject shell integration hooks
     const si = getShellIntegration(shell, this.pluginDir);
     const args = si.args.length > 0 ? si.args : baseArgs;
 

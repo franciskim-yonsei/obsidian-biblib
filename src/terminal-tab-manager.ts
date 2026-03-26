@@ -5,6 +5,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { PtyManager } from "./pty-manager";
 import { getTheme } from "./themes";
 import type { TerminalPluginSettings } from "./settings";
+import type { NotificationSound } from "./settings";
 import type { BinaryManager } from "./binary-manager";
 
 export const TAB_COLORS = [
@@ -25,26 +26,84 @@ export interface TerminalSession {
   pty: PtyManager;
   containerEl: HTMLElement;
   color: string;
-  commandRunning: boolean;
 }
 
 let sessionCounter = 0;
 
-/** Play a short notification beep via the Web Audio API. */
-function playNotificationSound(): void {
+/** Play a notification sound via the Web Audio API. */
+function playNotificationSound(sound: NotificationSound, volume: number): void {
   try {
     const ctx = new AudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = 880;
-    gain.gain.value = 0.3;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-    osc.stop(ctx.currentTime + 0.15);
-    setTimeout(() => ctx.close(), 200);
+    const vol = Math.max(0, Math.min(volume, 100)) / 100;
+
+    switch (sound) {
+      case "chime": {
+        // Two-tone ascending: 660 Hz → 880 Hz
+        const g = ctx.createGain();
+        g.gain.value = vol;
+        g.connect(ctx.destination);
+        const o1 = ctx.createOscillator();
+        o1.type = "sine";
+        o1.frequency.value = 660;
+        o1.connect(g);
+        o1.start(ctx.currentTime);
+        o1.stop(ctx.currentTime + 0.12);
+        const o2 = ctx.createOscillator();
+        o2.type = "sine";
+        o2.frequency.value = 880;
+        o2.connect(g);
+        o2.start(ctx.currentTime + 0.12);
+        o2.stop(ctx.currentTime + 0.24);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+        setTimeout(() => ctx.close(), 350);
+        break;
+      }
+      case "ping": {
+        // Short high triangle wave
+        const g = ctx.createGain();
+        g.gain.value = vol;
+        g.connect(ctx.destination);
+        const o = ctx.createOscillator();
+        o.type = "triangle";
+        o.frequency.value = 1200;
+        o.connect(g);
+        o.start();
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+        o.stop(ctx.currentTime + 0.1);
+        setTimeout(() => ctx.close(), 150);
+        break;
+      }
+      case "pop": {
+        // Short low sine
+        const g = ctx.createGain();
+        g.gain.value = vol;
+        g.connect(ctx.destination);
+        const o = ctx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = 400;
+        o.connect(g);
+        o.start();
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+        o.stop(ctx.currentTime + 0.08);
+        setTimeout(() => ctx.close(), 130);
+        break;
+      }
+      default: {
+        // "beep" — original 880 Hz sine
+        const g = ctx.createGain();
+        g.gain.value = vol;
+        g.connect(ctx.destination);
+        const o = ctx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = 880;
+        o.connect(g);
+        o.start();
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        o.stop(ctx.currentTime + 0.15);
+        setTimeout(() => ctx.close(), 200);
+        break;
+      }
+    }
   } catch {
     // Audio not available — silently ignore
   }
@@ -104,29 +163,40 @@ export class TerminalTabManager {
     terminal.loadAddon(webLinksAddon);
     terminal.open(containerEl);
 
+    // Intercept clipboard shortcuts — Obsidian captures them before xterm.js
+    terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.type !== "keydown") return true;
+      const mod = e.metaKey || e.ctrlKey;
+
+      // Paste: Ctrl+V / Cmd+V / Shift+Insert
+      if ((mod && e.key === "v") || (e.shiftKey && e.key === "Insert")) {
+        e.preventDefault();
+        navigator.clipboard.readText().then((text) => {
+          if (text) {
+            const s = this.sessions.find((s) => s.id === id);
+            if (s) s.pty.write(text);
+          }
+        }).catch(() => { /* clipboard unavailable */ });
+        return false;
+      }
+
+      // Copy: Ctrl+C / Cmd+C when there is a selection (otherwise send SIGINT)
+      if (mod && e.key === "c" && terminal.hasSelection()) {
+        navigator.clipboard.writeText(terminal.getSelection()).catch(() => {});
+        terminal.clearSelection();
+        return false;
+      }
+
+      return true;
+    });
+
     const pty = new PtyManager(this.pluginDir);
     const session: TerminalSession = {
-      id, name, terminal, fitAddon, pty, containerEl, color: "", commandRunning: false,
+      id, name, terminal, fitAddon, pty, containerEl, color: "",
     };
     this.sessions.push(session);
     this.switchTab(id);
     this.renderTabBar();
-
-    // Register OSC 133 handler for shell integration (command detection)
-    terminal.parser.registerOscHandler(133, (data: string) => {
-      if (data.startsWith("B")) {
-        // Command is about to execute
-        session.commandRunning = true;
-      } else if (data.startsWith("D")) {
-        // Command finished — notify if this tab is in the background
-        if (session.commandRunning && session.id !== this.activeId) {
-          const exitCode = parseInt(data.split(";")[1], 10) || 0;
-          this.notifyCompletion(session, exitCode);
-        }
-        session.commandRunning = false;
-      }
-      return false; // don't consume — let xterm handle it
-    });
 
     // Defer PTY spawn until DOM is laid out so fitAddon gets correct dimensions
     setTimeout(() => {
@@ -174,13 +244,6 @@ export class TerminalTabManager {
 
   switchTab(id: string): void {
     this.activeId = id;
-
-    // Clear blink notification on the tab being switched to
-    const idx = this.sessions.findIndex((s) => s.id === id);
-    if (idx >= 0) {
-      const tabs = this.tabBarEl.querySelectorAll(".terminal-tab");
-      if (tabs[idx]) tabs[idx].classList.remove("terminal-tab-blink");
-    }
 
     for (const session of this.sessions) {
       if (session.id === id) {
@@ -257,25 +320,10 @@ export class TerminalTabManager {
   }
 
   private notifyCompletion(session: TerminalSession, exitCode: number): void {
-    const mode = this.settings.notifyOnCompletion;
-    if (mode === "off") return;
+    if (!this.settings.notifyOnCompletion) return;
 
     const status = exitCode === 0 ? "done" : `exit ${exitCode}`;
-
-    if (mode === "blink" || mode === "both") {
-      // Find the tab element and add blink class
-      const tabs = this.tabBarEl.querySelectorAll(".terminal-tab");
-      const idx = this.sessions.indexOf(session);
-      if (idx >= 0 && tabs[idx]) {
-        tabs[idx].classList.add("terminal-tab-blink");
-      }
-    }
-
-    if (mode === "sound" || mode === "both") {
-      playNotificationSound();
-    }
-
-    // Always show an Obsidian notice for background completions
+    playNotificationSound(this.settings.notificationSound, this.settings.notificationVolume);
     new Notice(`${session.name}: ${status}`);
   }
 
@@ -368,7 +416,7 @@ export class TerminalTabManager {
 
     for (const session of this.sessions) {
       const tab = this.tabBarEl.createDiv({
-        cls: `terminal-tab ${session.id === this.activeId ? "active" : ""}`,
+        cls: `terminal-tab${session.id === this.activeId ? " active" : ""}`,
       });
 
       // Apply tab color as left border
