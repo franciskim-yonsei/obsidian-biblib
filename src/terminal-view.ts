@@ -87,4 +87,8 @@ export class TerminalView extends ItemView {
   getTabManager(): TerminalTabManager | null {
     return this.tabManager;
   }
+
+  updateBackgroundColor(): void {
+    this.tabManager?.updateBackgroundColor();
+  }
 }

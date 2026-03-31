@@ -9,6 +9,7 @@ export interface TerminalPluginSettings {
   fontSize: number;
   fontFamily: string;
   theme: string;
+  backgroundColor: string;
   cursorBlink: boolean;
   scrollback: number;
   defaultLocation: "right" | "bottom";
@@ -22,6 +23,7 @@ export const DEFAULT_SETTINGS: TerminalPluginSettings = {
   fontSize: 14,
   fontFamily: "Menlo, Monaco, 'Courier New', monospace",
   theme: "obsidian-dark",
+  backgroundColor: "",
   cursorBlink: true,
   scrollback: 5000,
   defaultLocation: "bottom",
@@ -151,6 +153,53 @@ export class TerminalSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         });
       });
+
+    const bgSetting = new Setting(containerEl)
+      .setName("Background color")
+      .setDesc("Override the theme background. Leave empty for theme default.");
+
+    let bgTextInput: HTMLInputElement;
+    let bgColorPicker: any;
+
+    bgSetting.addText((text) => {
+      bgTextInput = text.inputEl;
+      text
+        .setPlaceholder("Theme default")
+        .setValue(this.plugin.settings.backgroundColor)
+        .onChange(async (value) => {
+          this.plugin.settings.backgroundColor = value;
+          // Sync color picker if value is a valid hex color
+          if (/^#[0-9a-fA-F]{6}$/.test(value) && bgColorPicker) {
+            bgColorPicker.setValue(value);
+          }
+          await this.plugin.saveSettings();
+          this.plugin.updateTerminalBackgrounds();
+        });
+    });
+
+    bgSetting.addColorPicker((picker) => {
+      bgColorPicker = picker;
+      const current = this.plugin.settings.backgroundColor;
+      if (/^#[0-9a-fA-F]{6}$/.test(current)) {
+        picker.setValue(current);
+      }
+      picker.onChange(async (value) => {
+        this.plugin.settings.backgroundColor = value;
+        if (bgTextInput) bgTextInput.value = value;
+        await this.plugin.saveSettings();
+        this.plugin.updateTerminalBackgrounds();
+      });
+    });
+
+    bgSetting.addButton((btn) => {
+      btn.setButtonText("Reset").onClick(async () => {
+        this.plugin.settings.backgroundColor = "";
+        if (bgTextInput) bgTextInput.value = "";
+        if (bgColorPicker) bgColorPicker.setValue("#000000");
+        await this.plugin.saveSettings();
+        this.plugin.updateTerminalBackgrounds();
+      });
+    });
 
     new Setting(containerEl)
       .setName("Cursor blink")

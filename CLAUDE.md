@@ -14,7 +14,7 @@ Obsidian desktop plugin providing an embedded PTY terminal panel using xterm.js 
 npm install         # Install dependencies
 npm run dev         # Watch mode (auto-rebuild on changes)
 npm run build       # Production build (minified, type-checked)
-node install.mjs    # Copy plugin to D:\Lean Notes vault
+node install.mjs    # Copy plugin to D:\LOS Test vault
 ```
 
 ## Architecture
@@ -42,6 +42,10 @@ Plugin > View > TabManager > PtyManager chain. BinaryManager handles native modu
 - **Shell auto-detect**: Windows tries PowerShell 7 then cmd.exe; macOS/Linux uses `$SHELL`
 - **CI/CD**: Tag `v*` triggers GitHub Actions (build plugin + native binaries + create release)
 - **No tests configured**
+
+## Agile Artifacts
+
+Stored in the Obsidian vault at `$VAULT_PATH/01 Projects/LP Products/Lean Obsidian Terminal/`. Includes Epics, User Stories, NFRs, and Test Cases following the standard artifact format.
 
 ## Plugin commands
 

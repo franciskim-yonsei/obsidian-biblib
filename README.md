@@ -15,6 +15,8 @@ An embedded terminal panel for [Obsidian](https://obsidian.md), powered by [xter
 - Opens at vault root by default
 - Clipboard support: Ctrl+V / Cmd+V paste, Ctrl+C / Cmd+C copy (with selection)
 - Notification sounds when background tab commands finish (4 sound types, adjustable volume)
+- Shift+Enter inserts a newline instead of submitting (muscle memory friendly for Claude Code users)
+- Custom background color override with color picker (match your vault theme)
 - Configurable: shell path, font size, font family, cursor blink, scrollback, panel location
 
 ## Installation
@@ -56,6 +58,7 @@ An embedded terminal panel for [Obsidian](https://obsidian.md), powered by [xter
 | Theme | Obsidian Dark | Color theme for the terminal |
 | Cursor blink | On | Whether the cursor blinks |
 | Scrollback | 5000 | Number of lines kept in scroll history |
+| Background color | Theme default | Override the theme background with any CSS color (hex, RGB, etc.) |
 | Default location | Bottom | Where new terminal panels open (Bottom or Right) |
 | Notify on completion | Off | Sound + notice when a background tab command finishes |
 | Notification sound | Beep | Choose from Beep, Chime, Ping, or Pop |
@@ -73,7 +76,7 @@ On Windows, the plugin uses the winpty backend because Obsidian's Electron rende
 npm install
 npm run dev          # Watch mode (auto-rebuild on save)
 npm run build        # Production build
-node install.mjs     # Install to default vault (D:\Lean Notes)
+node install.mjs     # Install to default vault (D:\LOS Test)
 ```
 
 ## License

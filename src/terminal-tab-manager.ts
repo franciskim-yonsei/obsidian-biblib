@@ -148,6 +148,9 @@ export class TerminalTabManager {
 
     // Create xterm.js instance
     const theme = getTheme(this.settings.theme);
+    if (this.settings.backgroundColor) {
+      theme.background = this.settings.backgroundColor;
+    }
     const terminal = new Terminal({
       fontSize: this.settings.fontSize,
       fontFamily: this.settings.fontFamily,
@@ -167,6 +170,14 @@ export class TerminalTabManager {
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       if (e.type !== "keydown") return true;
       const mod = e.metaKey || e.ctrlKey;
+
+      // Shift+Enter: send newline without submitting
+      if (e.shiftKey && e.key === "Enter") {
+        e.preventDefault();
+        const s = this.sessions.find((s) => s.id === id);
+        if (s) s.pty.write("\n");
+        return false;
+      }
 
       // Paste: Ctrl+V / Cmd+V / Shift+Insert
       if ((mod && e.key === "v") || (e.shiftKey && e.key === "Insert")) {
@@ -409,6 +420,16 @@ export class TerminalTabManager {
       }
     };
     setTimeout(() => document.addEventListener("click", close, true), 0);
+  }
+
+  updateBackgroundColor(): void {
+    const theme = getTheme(this.settings.theme);
+    if (this.settings.backgroundColor) {
+      theme.background = this.settings.backgroundColor;
+    }
+    for (const session of this.sessions) {
+      session.terminal.options.theme = { ...session.terminal.options.theme, background: theme.background };
+    }
   }
 
   private renderTabBar(): void {

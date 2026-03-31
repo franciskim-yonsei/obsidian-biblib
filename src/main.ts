@@ -131,4 +131,12 @@ export default class TerminalPlugin extends Plugin {
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
   }
+
+  updateTerminalBackgrounds(): void {
+    const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL);
+    for (const leaf of leaves) {
+      const view = leaf.view as TerminalView;
+      view.updateBackgroundColor();
+    }
+  }
 }
