@@ -1,4 +1,4 @@
-import { Notice } from "obsidian";
+import { Notice, Platform } from "obsidian";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -109,6 +109,26 @@ function playNotificationSound(sound: NotificationSound, volume: number): void {
   }
 }
 
+function getWindowsPtyOptions():
+  | {
+      backend: "winpty";
+      buildNumber?: number;
+    }
+  | undefined {
+  if (!Platform.isWin) return undefined;
+
+  try {
+    const os = (window as any).require("os");
+    const rawBuild = os.release().split(".").pop();
+    const buildNumber = rawBuild ? Number.parseInt(rawBuild, 10) : Number.NaN;
+    return Number.isFinite(buildNumber)
+      ? { backend: "winpty", buildNumber }
+      : { backend: "winpty" };
+  } catch {
+    return { backend: "winpty" };
+  }
+}
+
 export class TerminalTabManager {
   private sessions: TerminalSession[] = [];
   private activeId: string | null = null;
@@ -154,12 +174,14 @@ export class TerminalTabManager {
     if (this.settings.backgroundColor) {
       theme.background = this.settings.backgroundColor;
     }
+    const windowsPty = getWindowsPtyOptions();
     const terminal = new Terminal({
       fontSize: this.settings.fontSize,
       fontFamily: this.settings.fontFamily,
       cursorBlink: this.settings.cursorBlink,
       scrollback: this.settings.scrollback,
       theme,
+      windowsPty,
     });
 
     const fitAddon = new FitAddon();
