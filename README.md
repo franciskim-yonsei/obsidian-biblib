@@ -70,6 +70,15 @@ The plugin uses xterm.js for terminal rendering and node-pty for native pseudo-t
 
 On Windows, the plugin uses the winpty backend because Obsidian's Electron renderer does not support Worker threads required by ConPTY.
 
+## Feedback
+
+Use this repo to report bugs, request features, or ask questions.
+
+- [Report a Bug](https://github.com/sdkasper/lean-obsidian-terminal/issues/new?assignees=&labels=bug&template=bug_report.md)
+- [Request a Feature](https://github.com/sdkasper/lean-obsidian-terminal/issues/new?assignees=&labels=enhancement&template=feature_request.md)
+- [Report a Performance Issue](https://github.com/sdkasper/lean-obsidian-terminal/issues/new?assignees=&labels=performance&template=performance_issue.md)
+- [Ask a Question / Share Feedback](https://github.com/sdkasper/lean-obsidian-terminal/discussions)
+
 ## Development
 
 ```bash
