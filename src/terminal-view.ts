@@ -59,7 +59,9 @@ export class TerminalView extends ItemView {
       this.plugin.settings,
       cwd,
       pluginDir,
-      this.plugin.binaryManager
+      this.plugin.binaryManager,
+      undefined,
+      () => this.leaf.detach()
     );
     this.tabManager.createTab();
 

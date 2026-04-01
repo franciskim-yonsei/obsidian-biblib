@@ -119,6 +119,7 @@ export class TerminalTabManager {
   private pluginDir: string;
   private binaryManager: BinaryManager;
   private onActiveChange?: () => void;
+  private onTabsEmpty?: () => void;
 
   constructor(
     tabBarEl: HTMLElement,
@@ -127,7 +128,8 @@ export class TerminalTabManager {
     cwd: string,
     pluginDir: string,
     binaryManager: BinaryManager,
-    onActiveChange?: () => void
+    onActiveChange?: () => void,
+    onTabsEmpty?: () => void
   ) {
     this.tabBarEl = tabBarEl;
     this.terminalHostEl = terminalHostEl;
@@ -136,6 +138,7 @@ export class TerminalTabManager {
     this.pluginDir = pluginDir;
     this.binaryManager = binaryManager;
     this.onActiveChange = onActiveChange;
+    this.onTabsEmpty = onTabsEmpty;
   }
 
   createTab(): TerminalSession {
@@ -246,7 +249,7 @@ export class TerminalTabManager {
       });
 
       pty.onExit(() => {
-        terminal.write("\r\n[Process exited]\r\n");
+        this.closeTab(session.id);
       });
     }, 100);
 
@@ -296,6 +299,11 @@ export class TerminalTabManager {
       } else {
         this.activeId = null;
       }
+    }
+
+    if (this.sessions.length === 0 && this.onTabsEmpty) {
+      this.onTabsEmpty();
+      return;
     }
 
     this.renderTabBar();
@@ -440,9 +448,10 @@ export class TerminalTabManager {
         cls: `terminal-tab${session.id === this.activeId ? " active" : ""}`,
       });
 
-      // Apply tab color as left border
+      // Apply tab color as left border + active highlight
       if (session.color) {
         tab.style.borderLeft = `3px solid ${session.color}`;
+        tab.style.setProperty("--tab-accent", session.color);
       }
 
       const label = tab.createSpan({ cls: "terminal-tab-label", text: session.name });
