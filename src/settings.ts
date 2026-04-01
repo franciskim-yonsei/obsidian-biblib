@@ -1,4 +1,4 @@
-import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting, ColorComponent } from "obsidian";
 import type TerminalPlugin from "./main";
 import { THEME_NAMES } from "./themes";
 
@@ -45,7 +45,7 @@ export class TerminalSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     // --- Binary Management ---
-    containerEl.createEl("h3", { text: "Terminal Binary" });
+    new Setting(containerEl).setName("Terminal binary").setHeading();
 
     const bm = this.plugin.binaryManager;
     const { platform, arch } = bm.getPlatformInfo();
@@ -78,7 +78,7 @@ export class TerminalSettingTab extends PluginSettingTab {
             try {
               await bm.download();
               new Notice("Terminal binaries installed successfully.");
-            } catch (err: any) {
+            } catch (err: unknown) {
               const msg = err instanceof Error ? err.message : String(err);
               new Notice(`Failed to download binaries: ${msg}`);
             }
@@ -101,7 +101,7 @@ export class TerminalSettingTab extends PluginSettingTab {
       });
 
     // --- Appearance & Behavior ---
-    containerEl.createEl("h3", { text: "Appearance & Behavior" });
+    new Setting(containerEl).setName("Appearance & behavior").setHeading();
 
     new Setting(containerEl)
       .setName("Shell path")
@@ -159,7 +159,7 @@ export class TerminalSettingTab extends PluginSettingTab {
       .setDesc("Override the theme background. Leave empty for theme default.");
 
     let bgTextInput: HTMLInputElement;
-    let bgColorPicker: any;
+    let bgColorPicker: ColorComponent | undefined;
 
     bgSetting.addText((text) => {
       bgTextInput = text.inputEl;
@@ -238,7 +238,7 @@ export class TerminalSettingTab extends PluginSettingTab {
       });
 
     // --- Notifications ---
-    containerEl.createEl("h3", { text: "Notifications" });
+    new Setting(containerEl).setName("Notifications").setHeading();
 
     new Setting(containerEl)
       .setName("Notify on command completion")
@@ -267,7 +267,7 @@ export class TerminalSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Notification volume")
-      .setDesc("Volume for the notification sound (0–100)")
+      .setDesc("Volume for the notification sound (0\u2013100)")
       .addSlider((slider) =>
         slider
           .setLimits(0, 100, 1)

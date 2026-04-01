@@ -347,6 +347,10 @@
   inset: 0;
 }
 
+.terminal-session-hidden {
+  display: none;
+}
+
 /* Constrain xterm to container */
 .terminal-session .xterm {
   height: 100%;

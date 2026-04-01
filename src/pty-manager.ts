@@ -1,19 +1,39 @@
 import { Platform } from "obsidian";
 import { getShellIntegration } from "./shell-integration";
 
+interface IPtyProcess {
+  pid: number;
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  onData(callback: (data: string) => void): void;
+  onExit(callback: (exitInfo: { exitCode: number; signal?: number }) => void): void;
+  kill(): void;
+}
+
+interface NodePtyModule {
+  spawn(
+    file: string,
+    args: string[],
+    options: {
+      name?: string;
+      cols?: number;
+      rows?: number;
+      cwd?: string;
+      env?: Record<string, string | undefined>;
+      useConpty?: boolean;
+    }
+  ): IPtyProcess;
+}
+
 // node-pty is loaded at runtime via Electron's require, not bundled by esbuild.
-function loadNodePty(pluginDir: string): any {
-  const electronRequire = (window as any).require;
-  if (!electronRequire) {
-    throw new Error("Cannot access Electron require — this plugin only works on desktop.");
-  }
-  const path = electronRequire("path");
+function loadNodePty(pluginDir: string): NodePtyModule {
+  const path = window.require("path") as typeof import("path");
   const explicitPath = path.join(pluginDir, "node_modules", "node-pty");
 
   try {
-    return electronRequire(explicitPath);
+    return window.require(explicitPath) as NodePtyModule;
   } catch {
-    return electronRequire("node-pty");
+    return window.require("node-pty") as NodePtyModule;
   }
 }
 
@@ -21,7 +41,7 @@ function getDefaultShell(): string {
   if (Platform.isWin) {
     const pwsh = process.env.ProgramFiles + "\\PowerShell\\7\\pwsh.exe";
     try {
-      const fs = (window as any).require("fs");
+      const fs = window.require("fs") as typeof import("fs");
       if (fs.existsSync(pwsh)) return pwsh;
     } catch {
       // ignore
@@ -49,14 +69,14 @@ function getShellArgs(shellPath: string): string[] {
  * Throws if the path does not exist or is not a file.
  */
 function validateShellPath(shellPath: string): void {
-  const fs = (window as any).require("fs");
+  const fs = window.require("fs") as typeof import("fs");
   try {
     const stat = fs.statSync(shellPath);
     if (!stat.isFile()) {
       throw new Error(`Shell path is not a file: ${shellPath}`);
     }
-  } catch (err: any) {
-    if (err.code === "ENOENT") {
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
       throw new Error(`Shell not found: ${shellPath}`);
     }
     throw err;
@@ -64,8 +84,8 @@ function validateShellPath(shellPath: string): void {
 }
 
 export class PtyManager {
-  private ptyProcess: any = null;
-  private nodePty: any = null;
+  private ptyProcess: IPtyProcess | null = null;
+  private nodePty: NodePtyModule | null = null;
   private pluginDir: string;
 
   constructor(pluginDir: string) {

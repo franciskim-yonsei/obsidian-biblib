@@ -1,4 +1,4 @@
-import { requestUrl, Notice } from "obsidian";
+import { requestUrl } from "obsidian";
 
 export type BinaryStatus = "not-installed" | "checking" | "downloading" | "ready" | "error";
 
@@ -75,26 +75,25 @@ export class BinaryManager {
   private manifestPath: string;
   private callbacks: Set<(status: BinaryStatus) => void> = new Set();
 
-  private readonly fs: any;
-  private readonly path: any;
-  private readonly os: any;
-  private readonly childProcess: any;
-  private readonly crypto: any;
+  private readonly fs: typeof import("fs");
+  private readonly path: typeof import("path");
+  private readonly os: typeof import("os");
+  private readonly childProcess: typeof import("child_process");
+  private readonly crypto: typeof import("crypto");
 
   constructor(pluginDir: string) {
     this.pluginDir = pluginDir;
-    const electronRequire = (window as any).require;
-    this.fs = electronRequire("fs");
-    this.path = electronRequire("path");
-    this.os = electronRequire("os");
-    this.childProcess = electronRequire("child_process");
-    this.crypto = electronRequire("crypto");
+    this.fs = window.require("fs") as typeof import("fs");
+    this.path = window.require("path") as typeof import("path");
+    this.os = window.require("os") as typeof import("os");
+    this.childProcess = window.require("child_process") as typeof import("child_process");
+    this.crypto = window.require("crypto") as typeof import("crypto");
 
     this.nodePtyDir = this.path.join(pluginDir, "node_modules", "node-pty");
     this.manifestPath = this.path.join(this.nodePtyDir, ".binary-manifest.json");
   }
 
-  async checkInstalled(): Promise<boolean> {
+  checkInstalled(): boolean {
     this.setStatus("checking");
 
     try {
@@ -257,7 +256,7 @@ export class BinaryManager {
       this.fs.writeFileSync(this.manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
 
       this.setStatus("ready");
-    } catch (err: any) {
+    } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Terminal: binary download failed", err);
       this.setStatus("error", message);
@@ -265,13 +264,13 @@ export class BinaryManager {
     }
   }
 
-  async remove(): Promise<void> {
+  remove(): void {
     try {
       if (this.fs.existsSync(this.nodePtyDir)) {
         this.fs.rmSync(this.nodePtyDir, { recursive: true, force: true });
       }
       this.setStatus("not-installed");
-    } catch (err: any) {
+    } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       this.setStatus("error", message);
       throw err;

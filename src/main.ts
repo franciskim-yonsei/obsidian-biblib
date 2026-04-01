@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf } from "obsidian";
+import { FileSystemAdapter, Plugin, WorkspaceLeaf } from "obsidian";
 import { VIEW_TYPE_TERMINAL, ICON_TERMINAL } from "./constants";
 import { TerminalView } from "./terminal-view";
 import { TerminalSettingTab } from "./settings";
@@ -14,13 +14,14 @@ export default class TerminalPlugin extends Plugin {
     await this.loadSettings();
 
     // Initialize binary manager
-    const path = (window as any).require("path");
+    const path = window.require("path") as typeof import("path");
+    const adapter = this.app.vault.adapter as FileSystemAdapter;
     const pluginDir = path.join(
-      (this.app.vault.adapter as any).getBasePath(),
-      ".obsidian", "plugins", this.manifest.id
+      adapter.getBasePath(),
+      this.app.vault.configDir, "plugins", this.manifest.id
     );
     this.binaryManager = new BinaryManager(pluginDir);
-    await this.binaryManager.checkInstalled();
+    this.binaryManager.checkInstalled();
 
     // Register the terminal view
     this.registerView(VIEW_TYPE_TERMINAL, (leaf: WorkspaceLeaf) => {
@@ -28,7 +29,7 @@ export default class TerminalPlugin extends Plugin {
     });
 
     // Ribbon icon
-    this.addRibbonIcon(ICON_TERMINAL, "Toggle Terminal", () => {
+    this.addRibbonIcon(ICON_TERMINAL, "Toggle terminal", () => {
       this.toggleTerminal();
     });
 
@@ -36,7 +37,7 @@ export default class TerminalPlugin extends Plugin {
     this.addCommand({
       id: "open-terminal",
       name: "Open terminal",
-      callback: () => this.activateTerminal(),
+      callback: () => void this.activateTerminal(),
     });
 
     this.addCommand({
@@ -60,7 +61,7 @@ export default class TerminalPlugin extends Plugin {
     this.addCommand({
       id: "open-terminal-split",
       name: "Open terminal in new pane",
-      callback: () => this.openTerminalInNewPane(),
+      callback: () => void this.openTerminalInNewPane(),
     });
 
     // Settings tab
@@ -77,7 +78,7 @@ export default class TerminalPlugin extends Plugin {
   async activateTerminal(): Promise<void> {
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_TERMINAL);
     if (existing.length > 0) {
-      this.app.workspace.revealLeaf(existing[0]);
+      void this.app.workspace.revealLeaf(existing[0]);
       return;
     }
 
@@ -88,7 +89,7 @@ export default class TerminalPlugin extends Plugin {
 
     if (leaf) {
       await leaf.setViewState({ type: VIEW_TYPE_TERMINAL, active: true });
-      this.app.workspace.revealLeaf(leaf);
+      void this.app.workspace.revealLeaf(leaf);
     }
   }
 
@@ -101,7 +102,7 @@ export default class TerminalPlugin extends Plugin {
     if (existing.length > 0) {
       this.closeTerminal();
     } else {
-      this.activateTerminal();
+      void this.activateTerminal();
     }
   }
 
@@ -112,7 +113,7 @@ export default class TerminalPlugin extends Plugin {
       view.createNewTab();
     } else {
       // Open terminal first, then it auto-creates a tab
-      this.activateTerminal();
+      void this.activateTerminal();
     }
   }
 
@@ -120,7 +121,7 @@ export default class TerminalPlugin extends Plugin {
     const leaf = this.app.workspace.getLeaf("split", "horizontal");
     if (leaf) {
       await leaf.setViewState({ type: VIEW_TYPE_TERMINAL, active: true });
-      this.app.workspace.revealLeaf(leaf);
+      void this.app.workspace.revealLeaf(leaf);
     }
   }
 

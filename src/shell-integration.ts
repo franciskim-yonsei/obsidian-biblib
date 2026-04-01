@@ -64,13 +64,13 @@ function prompt {
 `.trim();
 
 function joinPath(...parts: string[]): string {
-  const path = (window as any).require("path");
+  const path = window.require("path") as typeof import("path");
   return path.join(...parts);
 }
 
 /** Write a script to disk if it doesn't exist or has changed. */
 function ensureScript(dir: string, filename: string, content: string): string {
-  const fs = (window as any).require("fs");
+  const fs = window.require("fs") as typeof import("fs");
   fs.mkdirSync(dir, { recursive: true });
   const filePath = joinPath(dir, filename);
   try {

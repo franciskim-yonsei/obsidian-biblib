@@ -55,7 +55,7 @@ function playNotificationSound(sound: NotificationSound, volume: number): void {
         o2.start(ctx.currentTime + 0.12);
         o2.stop(ctx.currentTime + 0.24);
         g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
-        setTimeout(() => ctx.close(), 350);
+        setTimeout(() => void ctx.close(), 350);
         break;
       }
       case "ping": {
@@ -70,7 +70,7 @@ function playNotificationSound(sound: NotificationSound, volume: number): void {
         o.start();
         g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
         o.stop(ctx.currentTime + 0.1);
-        setTimeout(() => ctx.close(), 150);
+        setTimeout(() => void ctx.close(), 150);
         break;
       }
       case "pop": {
@@ -85,7 +85,7 @@ function playNotificationSound(sound: NotificationSound, volume: number): void {
         o.start();
         g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
         o.stop(ctx.currentTime + 0.08);
-        setTimeout(() => ctx.close(), 130);
+        setTimeout(() => void ctx.close(), 130);
         break;
       }
       default: {
@@ -100,7 +100,7 @@ function playNotificationSound(sound: NotificationSound, volume: number): void {
         o.start();
         g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
         o.stop(ctx.currentTime + 0.15);
-        setTimeout(() => ctx.close(), 200);
+        setTimeout(() => void ctx.close(), 200);
         break;
       }
     }
@@ -261,7 +261,7 @@ export class TerminalTabManager {
 
     for (const session of this.sessions) {
       if (session.id === id) {
-        session.containerEl.style.display = "";
+        session.containerEl.removeClass("terminal-session-hidden");
         // Fit after showing
         setTimeout(() => {
           try {
@@ -273,7 +273,7 @@ export class TerminalTabManager {
           }
         }, 10);
       } else {
-        session.containerEl.style.display = "none";
+        session.containerEl.addClass("terminal-session-hidden");
       }
     }
 
@@ -397,7 +397,7 @@ export class TerminalTabManager {
     });
 
     // Color submenu
-    const colorLabel = menu.createDiv({ cls: "terminal-ctx-item terminal-ctx-color-label", text: "Color" });
+    menu.createDiv({ cls: "terminal-ctx-item terminal-ctx-color-label", text: "Color" });
     const colorRow = menu.createDiv({ cls: "terminal-ctx-color-row" });
 
     for (const c of TAB_COLORS) {

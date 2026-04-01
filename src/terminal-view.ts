@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf } from "obsidian";
+import { FileSystemAdapter, ItemView, WorkspaceLeaf } from "obsidian";
 import { VIEW_TYPE_TERMINAL, ICON_TERMINAL } from "./constants";
 import { TerminalTabManager } from "./terminal-tab-manager";
 import type TerminalPlugin from "./main";
@@ -26,6 +26,7 @@ export class TerminalView extends ItemView {
     return ICON_TERMINAL;
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async onOpen(): Promise<void> {
     const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
@@ -40,16 +41,16 @@ export class TerminalView extends ItemView {
     // Determine CWD — vault root
     let cwd: string;
     try {
-      cwd = (this.app.vault.adapter as any).getBasePath();
+      cwd = (this.app.vault.adapter as FileSystemAdapter).getBasePath();
     } catch {
       cwd = process.cwd();
     }
 
     // Resolve plugin directory for native module loading
-    const path = (window as any).require("path");
+    const path = window.require("path") as typeof import("path");
     const pluginDir = path.join(
-      (this.plugin.app.vault.adapter as any).getBasePath(),
-      ".obsidian", "plugins", this.plugin.manifest.id
+      (this.plugin.app.vault.adapter as FileSystemAdapter).getBasePath(),
+      this.plugin.app.vault.configDir, "plugins", this.plugin.manifest.id
     );
 
     // Create tab manager and first terminal
@@ -75,6 +76,7 @@ export class TerminalView extends ItemView {
     this.resizeObserver.observe(terminalHostEl);
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async onClose(): Promise<void> {
     if (this.resizeTimer) clearTimeout(this.resizeTimer);
     this.resizeObserver?.disconnect();
