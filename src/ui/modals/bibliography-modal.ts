@@ -519,7 +519,10 @@ export class BibliographyModal extends BaseBibliographyModal {
             
             let hasContributors = false;
             contributorTypes.forEach(role => {
-                const contributors = NameParser.toContributors(cslData[role], role);
+                let contributors = NameParser.toContributors(cslData[role], role);
+                if (role === 'author' && contributors.length === 0) {
+                    contributors = NameParser.toContributors(cslData.authors, role);
+                }
                 if (contributors.length > 0) {
                     hasContributors = true;
                     contributors.forEach(person => {
@@ -577,7 +580,7 @@ export class BibliographyModal extends BaseBibliographyModal {
                 'id', 'type', 'title', 'title-short', 'page', 'URL', 'container-title',
                 'publisher', 'publisher-place', 'volume', 'number', 'issue', 'DOI',
                 'abstract', 'issued', 'year', 'month', 'day', 'language', 'edition',
-                'author', 'editor', 'translator', 'contributor', 'shortTitle', 'journal',
+                'author', 'authors', 'editor', 'translator', 'contributor', 'shortTitle', 'journal',
                 // Skip citation.js internal fields
                 '_graph', '_item', '_attachment', 
                 // Skip non-CSL fields that shouldn't be in frontmatter

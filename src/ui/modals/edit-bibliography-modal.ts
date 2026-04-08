@@ -320,11 +320,22 @@ export class EditBibliographyModal extends BibliographyModal {
             
             // Update frontmatter with contributors
             for (const [role, names] of Object.entries(contributorsByRole)) {
-                const storedNames = NameParser.toStorageStrings(names);
-                if (storedNames.length > 0) {
-                    finalFrontmatterOutput[role] = storedNames;
+                if (role === 'author') {
+                    finalFrontmatterOutput.author = names;
+
+                    const storedAuthors = NameParser.toStorageStrings(names);
+                    if (storedAuthors.length > 0) {
+                        finalFrontmatterOutput.authors = storedAuthors;
+                    } else {
+                        delete finalFrontmatterOutput.authors;
+                    }
                 } else {
-                    delete finalFrontmatterOutput[role];
+                    const storedNames = NameParser.toStorageStrings(names);
+                    if (storedNames.length > 0) {
+                        finalFrontmatterOutput[role] = storedNames;
+                    } else {
+                        delete finalFrontmatterOutput[role];
+                    }
                 }
             }
             
@@ -334,6 +345,9 @@ export class EditBibliographyModal extends BibliographyModal {
                     delete finalFrontmatterOutput[field];
                 }
             });
+            if (!contributorsByRole.author) {
+                delete finalFrontmatterOutput.authors;
+            }
             
             // Merge additional fields
             updatedModalData.additionalFields.forEach(field => {
@@ -417,7 +431,7 @@ export class EditBibliographyModal extends BibliographyModal {
                         try {
                             // Never overwrite real CSL fields from a custom template.
                             // Non-CSL fields should be recomputed when this toggle is enabled.
-                            if (CSL_ALL_CSL_FIELDS.has(field.name)) {
+                            if (CSL_ALL_CSL_FIELDS.has(field.name) || field.name === 'authors') {
                                 continue;
                             }
                             

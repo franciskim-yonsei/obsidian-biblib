@@ -3,7 +3,7 @@ import { TemplateVariableBuilderService } from '../template-variable-builder-ser
 import { DEFAULT_SETTINGS } from '../../types/settings';
 
 describe('FrontmatterBuilderService', () => {
-  it('stores Obsidian-friendly date strings and author lists in frontmatter', async () => {
+  it('stores structured authors plus an Obsidian-friendly authors list', async () => {
     const service = new FrontmatterBuilderService(new TemplateVariableBuilderService());
 
     const yaml = await service.buildYamlFrontmatter({
@@ -32,8 +32,10 @@ describe('FrontmatterBuilderService', () => {
     expect(yaml).toContain('issued: 2024-03-15');
     expect(yaml).toContain('accessed: 2026-04-08');
     expect(yaml).toContain('author:');
+    expect(yaml).toContain('family: Smith');
+    expect(yaml).toContain('given: Jane');
+    expect(yaml).toContain('authors:');
     expect(yaml).toContain('- Jane Smith');
     expect(yaml).not.toContain('date-parts');
-    expect(yaml).not.toContain('family:');
   });
 });

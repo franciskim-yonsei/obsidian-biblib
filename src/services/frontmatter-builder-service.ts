@@ -126,6 +126,16 @@ export class FrontmatterBuilderService {
     });
 
     Object.entries(contributorsByRole).forEach(([role, roleContributors]) => {
+      if (role === 'author') {
+        frontmatter.author = roleContributors.map(({ role: _role, ...personData }) => personData);
+
+        const storedAuthors = NameParser.toStorageStrings(roleContributors);
+        if (storedAuthors.length > 0) {
+          frontmatter.authors = storedAuthors;
+        }
+        return;
+      }
+
       const storedNames = NameParser.toStorageStrings(roleContributors);
       if (storedNames.length > 0) {
         frontmatter[role] = storedNames;
