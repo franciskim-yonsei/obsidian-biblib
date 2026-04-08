@@ -2,9 +2,9 @@
 
 This page provides solutions to common issues.
 
-**Q: Why do I see "Invalid YAML" warnings in the Obsidian Properties panel?**
+**Q: Why do I still see YAML warnings in the Obsidian Properties panel?**
 
-**A:** This is a display limitation in Obsidian's native metadata parser, which does not fully support the nested YAML structures used in the CSL-JSON format. The data is stored correctly and is usable by BibLib and external tools. To view the raw YAML, switch the note to Source Mode.
+**A:** BibLib patches the structured `author` field so it can be edited directly in Properties. Other nested CSL structures are still constrained by Obsidian's native metadata parser and may need to be edited in Source Mode.
 
 **Q: The Zotero Connector integration is not working.**
 
@@ -32,7 +32,7 @@ This page provides solutions to common issues.
 
 **Q: How do I edit complex CSL fields like authors?**
 
-**A:** For complex fields, it is best to edit the YAML directly in Source Mode. The `author` field, for example, is an array of objects:
+**A:** Use the patched `author` field in Obsidian's Properties view for authors. For other complex CSL fields, edit the YAML directly in Source Mode. The `author` field still uses an array of objects:
 ```yaml
 author:
   - family: Smith

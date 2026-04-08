@@ -4,6 +4,7 @@ import { SettingsManager } from './src/managers/settings-manager';
 import { ServiceManager } from './src/managers/service-manager';
 import { CommandRegistry } from './src/managers/command-registry';
 import { ZoteroConnectorManager } from './src/managers/zotero-connector-manager';
+import { AuthorPropertiesManager } from './src/managers/author-properties-manager';
 import type { BibliographyPluginSettings } from './src/types/settings';
 
 export default class BibliographyPlugin extends Plugin {
@@ -12,6 +13,7 @@ export default class BibliographyPlugin extends Plugin {
     private serviceManager: ServiceManager;
     private commandRegistry: CommandRegistry;
     private zoteroConnectorManager: ZoteroConnectorManager | null = null;
+    private authorPropertiesManager: AuthorPropertiesManager;
 
     // Public accessor for settings
     public settings: BibliographyPluginSettings;
@@ -23,6 +25,10 @@ export default class BibliographyPlugin extends Plugin {
 
         // Initialize the service manager with loaded settings
         this.serviceManager = new ServiceManager(this.app, this.settings);
+
+        // Patch Obsidian Properties for structured CSL authors
+        this.authorPropertiesManager = new AuthorPropertiesManager(this);
+        this.authorPropertiesManager.onload();
 
         // Initialize the command registry
         this.commandRegistry = new CommandRegistry(
@@ -108,6 +114,8 @@ export default class BibliographyPlugin extends Plugin {
      * Clean up when plugin is disabled
      */
     onunload() {
+        this.authorPropertiesManager.onunload();
+
         // Stop the Zotero connector
         if (this.zoteroConnectorManager) {
             this.zoteroConnectorManager.onUnload();

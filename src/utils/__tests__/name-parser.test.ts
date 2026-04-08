@@ -27,4 +27,24 @@ describe('NameParser', () => {
       { family: 'Smith', given: 'Jane' }
     ]);
   });
+
+  it('preserves CSL boolean name flags during normalization', () => {
+    expect(NameParser.toCslNames([
+      {
+        family: 'Smith',
+        given: 'Jane',
+        'comma-suffix': true,
+        'static-ordering': true,
+        'parse-names': false
+      }
+    ])).toEqual([
+      {
+        family: 'Smith',
+        given: 'Jane',
+        'comma-suffix': true,
+        'static-ordering': true,
+        'parse-names': false
+      }
+    ]);
+  });
 });

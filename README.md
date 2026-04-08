@@ -65,7 +65,7 @@ tags:
 ```
 
 > [!NOTE]
-> Obsidian's Properties panel may show warnings for nested YAML fields like `author` arrays. This is a display limitation in Obsidian's metadata parser — the data is stored correctly and works with external tools.
+> BibLib patches Obsidian's Properties UI for the structured `author` field, so you can edit CSL author lists directly there. Other nested CSL fields may still need Source Mode.
 
 ## Settings
 

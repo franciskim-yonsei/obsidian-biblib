@@ -514,15 +514,11 @@ export class BibliographyModal extends BaseBibliographyModal {
             this.contributors = [];
             this.contributorsListContainer.empty();
             
-            // Process contributors - handle different formats
             const contributorTypes = ['author', 'editor', 'translator', 'contributor'];
-            
+
             let hasContributors = false;
             contributorTypes.forEach(role => {
-                let contributors = NameParser.toContributors(cslData[role], role);
-                if (role === 'author' && contributors.length === 0) {
-                    contributors = NameParser.toContributors(cslData.authors, role);
-                }
+                const contributors = NameParser.toContributors(cslData[role], role);
                 if (contributors.length > 0) {
                     hasContributors = true;
                     contributors.forEach(person => {

@@ -59,6 +59,9 @@ export class NameParser {
             ? name['non-dropping-particle'].trim()
             : '';
         const suffix = typeof name.suffix === 'string' ? name.suffix.trim() : '';
+        const commaSuffix = typeof name['comma-suffix'] === 'boolean' ? name['comma-suffix'] : undefined;
+        const staticOrdering = typeof name['static-ordering'] === 'boolean' ? name['static-ordering'] : undefined;
+        const parseNames = typeof name['parse-names'] === 'boolean' ? name['parse-names'] : undefined;
 
         if (!family && !given && !literal) {
             const fullName = typeof name.name === 'string' ? name.name.trim() : '';
@@ -72,6 +75,9 @@ export class NameParser {
         if (droppingParticle) normalized['dropping-particle'] = droppingParticle;
         if (nonDroppingParticle) normalized['non-dropping-particle'] = nonDroppingParticle;
         if (suffix) normalized.suffix = suffix;
+        if (commaSuffix !== undefined) normalized['comma-suffix'] = commaSuffix;
+        if (staticOrdering !== undefined) normalized['static-ordering'] = staticOrdering;
+        if (parseNames !== undefined) normalized['parse-names'] = parseNames;
 
         return normalized;
     }

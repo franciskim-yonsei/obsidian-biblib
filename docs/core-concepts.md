@@ -16,7 +16,7 @@ This matters because CSL-JSON is the format that Pandoc and other citation proce
 
 Some of the CSL-JSON data types are more complex than the flat key-value pairs that Obsidian's Properties panel is designed for. Author names, for instance, are arrays of objects with `family` and `given` fields, and optionally particles (`non-dropping-particle` for "de", `dropping-particle` for "van") and suffixes ("Jr.", "III"). Dates use a `date-parts` array that supports partial values — `[[2023]]` for a year, `[[2023, 6]]` for year and month, `[[2023, 6, 15]]` for a full date — and a `raw` field for values that do not fit into that structure, like "Spring 2023" or "circa 1850".
 
-Obsidian's Properties panel may display warnings for these nested structures. This is a display limitation, not a data problem. The YAML is valid and can be viewed correctly in Source Mode.
+BibLib patches the `author` field inside Obsidian's Properties panel so structured author lists can be edited directly. Other nested CSL structures may still display warnings; that is a UI limitation, not a data problem. The YAML remains valid and can always be viewed in Source Mode.
 
 ## Citekeys
 

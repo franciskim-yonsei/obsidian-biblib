@@ -48,8 +48,8 @@ tags:
 
 The `id` field is the citekey, used for filenames, Pandoc citations (`[@smith2023]`), and Obsidian links. The `type` field follows the CSL type vocabulary (article-journal, book, chapter, thesis, and so on). The remaining fields are standard CSL-JSON properties.
 
-!!! warning "YAML Display in Obsidian"
-    Obsidian's Properties panel may show warnings for nested YAML structures like the `author` array. This is a display limitation in Obsidian's metadata parser — the data is stored correctly and works with external tools. You can view the raw YAML in Source Mode.
+!!! warning "YAML display in Obsidian"
+    BibLib patches the structured `author` field in Obsidian's Properties panel so authors can be edited there directly. Other nested CSL structures may still show warnings. The data is stored correctly, and you can always inspect the raw YAML in Source Mode.
 
 ## How it fits into a writing workflow
 

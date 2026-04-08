@@ -322,13 +322,6 @@ export class EditBibliographyModal extends BibliographyModal {
             for (const [role, names] of Object.entries(contributorsByRole)) {
                 if (role === 'author') {
                     finalFrontmatterOutput.author = names;
-
-                    const storedAuthors = NameParser.toStorageStrings(names);
-                    if (storedAuthors.length > 0) {
-                        finalFrontmatterOutput.authors = storedAuthors;
-                    } else {
-                        delete finalFrontmatterOutput.authors;
-                    }
                 } else {
                     const storedNames = NameParser.toStorageStrings(names);
                     if (storedNames.length > 0) {
@@ -338,16 +331,13 @@ export class EditBibliographyModal extends BibliographyModal {
                     }
                 }
             }
-            
+
             // Clear any old contributor fields that are now empty
             CSL_NAME_FIELDS.forEach(field => {
                 if (!contributorsByRole[field] && finalFrontmatterOutput[field]) {
                     delete finalFrontmatterOutput[field];
                 }
             });
-            if (!contributorsByRole.author) {
-                delete finalFrontmatterOutput.authors;
-            }
             
             // Merge additional fields
             updatedModalData.additionalFields.forEach(field => {

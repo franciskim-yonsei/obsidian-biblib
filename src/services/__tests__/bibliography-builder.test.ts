@@ -32,18 +32,21 @@ describe('BibliographyBuilder', () => {
     expect(normalized.issued).toEqual({ 'date-parts': [[2024, 3]] });
   });
 
-  it('reconstructs flat author lists as CSL literal names for export', () => {
+  it('preserves structured authors for export', () => {
     const builder = new BibliographyBuilder(new App() as any, DEFAULT_SETTINGS);
 
     const normalized = (builder as any).normalizeFrontmatterForExport({
       id: 'example2024',
       type: 'article-journal',
       title: 'Example Reference',
-      author: ['Jane Smith', 'World Health Organization']
+      author: [
+        { family: 'Smith', given: 'Jane' },
+        { literal: 'World Health Organization' }
+      ]
     });
 
     expect(normalized.author).toEqual([
-      { literal: 'Jane Smith' },
+      { family: 'Smith', given: 'Jane' },
       { literal: 'World Health Organization' }
     ]);
   });
