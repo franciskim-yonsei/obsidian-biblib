@@ -143,8 +143,23 @@ export class CitationService {
         this.citekeyOptions = citekeyOptions || CitekeyGenerator.defaultOptions;
     }
 
+    private normalizeEntry(entry: any, emptyMessage: string): any {
+        if (!entry) {
+            throw new Error(emptyMessage);
+        }
+
+        entry.type = entry.type || 'document';
+
+        if (!entry.id || typeof entry.id !== 'string' || entry.id.trim() === '') {
+            entry.id = CitekeyGenerator.generate(entry, this.citekeyOptions);
+        }
+
+        return entry;
+    }
+
     /**
      * Fetch normalized CSL-JSON for an identifier (DOI, URL, ISBN) via Citoid (BibTeX)
+     * with a direct PubMed/PMC CSL fallback when Citation.js cannot resolve the identifier.
      */
     async fetchNormalized(id: string): Promise<any> {
         try {
@@ -152,24 +167,19 @@ export class CitationService {
             const cite = new Cite(bibtex);
             const jsonString = cite.get({ style: 'csl', type: 'string' });
             const data = JSON.parse(jsonString);
-            let entry = Array.isArray(data) ? data[0] : data;
+            const entry = Array.isArray(data) ? data[0] : data;
 
-            // Post-process entry fetched via BibTeX if needed (e.g., ensure type exists)
-            if (!entry) {
-                 throw new Error("Citoid returned empty or invalid data.");
-            }
-            entry.type = entry.type || 'document'; // Ensure type exists
-
-
-            // Generate citekey if no ID came from BibTeX or if it looks invalid
-            if (!entry.id || typeof entry.id !== 'string' || entry.id.trim() === '') {
-                entry.id = CitekeyGenerator.generate(entry, this.citekeyOptions);
-            }
-            // Optionally prefix non-Zotero IDs if desired, e.g.,
-            // else { entry.id = `bib_${entry.id}`; }
-
-            return entry;
+            return this.normalizeEntry(entry, 'Citoid returned empty or invalid data.');
         } catch (e: any) {
+            const pubMedEntry = await this.citoid.fetchPubMedCsl(id);
+            if (pubMedEntry) {
+                if (typeof pubMedEntry.id === 'string' && /^pmid:/i.test(pubMedEntry.id)) {
+                    delete pubMedEntry.id;
+                }
+
+                return this.normalizeEntry(pubMedEntry, 'PubMed returned empty or invalid data.');
+            }
+
             console.error(`Error fetching/parsing BibTeX from Citoid for ID [${id}]:`, e);
             new Notice(`Error fetching citation data for ${id}. ${e.message || ''}`);
             throw e;
@@ -184,20 +194,9 @@ export class CitationService {
             const cite = new Cite(bibtex);
             const jsonString = cite.get({ style: 'csl', type: 'string' });
             const data = JSON.parse(jsonString);
-            let entry = Array.isArray(data) ? data[0] : data;
+            const entry = Array.isArray(data) ? data[0] : data;
 
-            if (!entry) {
-                 throw new Error("Parsed BibTeX resulted in empty data.");
-            }
-            entry.type = entry.type || 'document'; // Ensure type exists
-
-            // Generate citekey if needed
-            if (!entry.id || typeof entry.id !== 'string' || entry.id.trim() === '') {
-                entry.id = CitekeyGenerator.generate(entry, this.citekeyOptions);
-            }
-             // Optionally prefix non-Zotero IDs if desired
-
-            return entry;
+            return this.normalizeEntry(entry, 'Parsed BibTeX resulted in empty data.');
         } catch (e: any) {
             console.error('Error parsing BibTeX:', e);
             new Notice(`Error parsing BibTeX. ${e.message || ''}`);

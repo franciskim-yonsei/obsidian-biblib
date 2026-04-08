@@ -32,8 +32,8 @@ describe('CitoidService', () => {
   let service: CitoidService;
 
   beforeEach(() => {
+    jest.resetAllMocks();
     service = new CitoidService();
-    jest.clearAllMocks();
   });
 
   describe('fetchBibTeX', () => {
@@ -197,6 +197,63 @@ describe('CitoidService', () => {
         const result = await service.fetchBibTeX('10.1234/test');
         expect(result).toContain('@article');
       });
+    });
+  });
+
+  describe('fetchPubMedCsl', () => {
+    it('should fetch CSL for PMID-prefixed identifiers', async () => {
+      mockRequestUrl.mockResolvedValueOnce(
+        mockResponse(JSON.stringify({ id: 'pmid:31209238', title: 'Test article' }))
+      );
+
+      const result = await service.fetchPubMedCsl('pmid:31209238');
+
+      expect(result).toEqual({ id: 'pmid:31209238', title: 'Test article' });
+      expect(mockRequestUrl).toHaveBeenCalledWith({
+        url: 'https://api.ncbi.nlm.nih.gov/lit/ctxp/v1/pubmed/?format=csl&id=31209238',
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Obsidian-BibLib'
+        }
+      });
+    });
+
+    it('should fetch CSL for bare numeric PubMed identifiers', async () => {
+      mockRequestUrl.mockResolvedValueOnce(
+        mockResponse(JSON.stringify({ id: 'pmid:31209238', title: 'Test article' }))
+      );
+
+      const result = await service.fetchPubMedCsl('31209238');
+
+      expect(result).toEqual({ id: 'pmid:31209238', title: 'Test article' });
+      expect(mockRequestUrl).toHaveBeenCalledWith({
+        url: 'https://api.ncbi.nlm.nih.gov/lit/ctxp/v1/pubmed/?format=csl&id=31209238',
+        method: 'GET',
+        headers: expect.any(Object)
+      });
+    });
+
+    it('should fetch CSL for PMC identifiers', async () => {
+      mockRequestUrl.mockResolvedValueOnce(
+        mockResponse(JSON.stringify({ id: 'pmid:31281945', title: 'PMC article' }))
+      );
+
+      const result = await service.fetchPubMedCsl('PMC6613236');
+
+      expect(result).toEqual({ id: 'pmid:31281945', title: 'PMC article' });
+      expect(mockRequestUrl).toHaveBeenCalledWith({
+        url: 'https://api.ncbi.nlm.nih.gov/lit/ctxp/v1/pmc/?format=csl&id=6613236',
+        method: 'GET',
+        headers: expect.any(Object)
+      });
+    });
+
+    it('should return null for non-PubMed identifiers', async () => {
+      const result = await service.fetchPubMedCsl('10.1234/test.doi');
+
+      expect(result).toBeNull();
+      expect(mockRequestUrl).not.toHaveBeenCalled();
     });
   });
 });

@@ -3,16 +3,72 @@ import { requestUrl, Notice } from 'obsidian';
 import Cite from 'citation-js';
 import '@citation-js/plugin-isbn';
 import '@citation-js/plugin-doi';
-import '@citation-js/plugin-pubmed';
 import '@citation-js/plugin-wikidata';
 
 import '@citation-js/plugin-bibtex';
+
+type PubMedSource = 'pubmed' | 'pmc';
+
+interface ParsedPubMedIdentifier {
+    source: PubMedSource;
+    id: string;
+}
 
 export class CitoidService {
     private apiUrl: string = 'https://en.wikipedia.org/api/rest_v1/data/citation/bibtex/';
 
     constructor() {
         // Fixed BibTeX endpoint; no CrossRef fallback
+    }
+
+    private parsePubMedIdentifier(identifier: string): ParsedPubMedIdentifier | null {
+        const trimmed = identifier.trim();
+
+        const pmcidMatch = trimmed.match(/^pmcid:\s*pmc?(\d+)$/i);
+        if (pmcidMatch) {
+            return { source: 'pmc', id: pmcidMatch[1] };
+        }
+
+        const pmcMatch = trimmed.match(/^pmc(\d+)$/i);
+        if (pmcMatch) {
+            return { source: 'pmc', id: pmcMatch[1] };
+        }
+
+        const pmidMatch = trimmed.match(/^pmid:\s*(\d+)$/i);
+        if (pmidMatch) {
+            return { source: 'pubmed', id: pmidMatch[1] };
+        }
+
+        if (/^\d+$/.test(trimmed)) {
+            return { source: 'pubmed', id: trimmed };
+        }
+
+        return null;
+    }
+
+    async fetchPubMedCsl(identifier: string): Promise<any | null> {
+        const parsed = this.parsePubMedIdentifier(identifier);
+        if (!parsed) {
+            return null;
+        }
+
+        const url = `https://api.ncbi.nlm.nih.gov/lit/ctxp/v1/${parsed.source}/?format=csl&id=${parsed.id}`;
+
+        try {
+            const resp = await requestUrl({
+                url,
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'User-Agent': 'Obsidian-BibLib'
+                }
+            });
+
+            return JSON.parse(resp.text);
+        } catch (err) {
+            console.warn(`NCBI ${parsed.source.toUpperCase()} lookup failed for ${identifier}:`, err);
+            return null;
+        }
     }
 
     /**
@@ -59,8 +115,8 @@ export class CitoidService {
 
                 if (!text || !text.trim().startsWith('@')) {
                     // Try citation-js as final fallback
-                    console.log('Citoid endpoints failed, attempting citation-js fallback');
-                    new Notice('Using citation-js fallback for identifier lookup');
+                    console.log('Citoid endpoints failed, attempting fallback metadata lookup');
+                    new Notice('Using fallback metadata lookup for identifier');
 
                     try {
                         const data = await Cite.async(identifier);
