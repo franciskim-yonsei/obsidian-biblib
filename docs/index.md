@@ -6,6 +6,9 @@ BibLib is an Obsidian plugin for managing bibliographic references. Each referen
 
 Looking for a command-line workflow? See [biblib-cli](https://github.com/callumalpass/biblib-cli).
 
+!!! note "About this build"
+    This documentation reflects a personally modified BibLib build used in a real vault. The most visible customization is an inline Obsidian Properties editor for the structured CSL `author` field.
+
 ## Why plain-text references?
 
 Most reference managers store bibliographic data in a database. This works until you want to do something the software didn't anticipate: query your references with a different tool, version-control your library, or read the data without launching a specific application. Migration can be difficult when the software is discontinued or changes direction.
@@ -49,7 +52,7 @@ tags:
 The `id` field is the citekey, used for filenames, Pandoc citations (`[@smith2023]`), and Obsidian links. The `type` field follows the CSL type vocabulary (article-journal, book, chapter, thesis, and so on). The remaining fields are standard CSL-JSON properties.
 
 !!! warning "YAML display in Obsidian"
-    BibLib patches the structured `author` field in Obsidian's Properties panel so authors can be edited there directly. Other nested CSL structures may still show warnings. The data is stored correctly, and you can always inspect the raw YAML in Source Mode.
+    Use the standard CSL `author` field. In this build, BibLib patches that field in Obsidian's Properties panel so authors can be edited inline as chips. Other nested CSL structures may still show warnings. The data is stored correctly, and you can always inspect the raw YAML in Source Mode.
 
 ## How it fits into a writing workflow
 

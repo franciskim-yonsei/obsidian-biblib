@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Port the inline structured `author` editor from the yaml-struct plugin into BibLib's patched Obsidian Properties UI
+- Improve inline author editing behavior so `Esc` cancels and losing focus collapses the active inline form
+- Refresh README and docs to describe the customized build and the current `author`-field workflow
+
 See [unreleased.md](docs/releases/unreleased.md) for upcoming changes.
 
 ## [1.7.2] - 2025-07-02

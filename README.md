@@ -4,6 +4,9 @@ BibLib is an Obsidian plugin for managing bibliographic references. Each referen
 
 Looking for a command-line workflow? See [biblib-cli](https://github.com/callumalpass/biblib-cli).
 
+> [!IMPORTANT]
+> This repository currently includes personal modifications on top of upstream BibLib for a real-world vault workflow. In particular, the Obsidian Properties view is patched so the structured CSL `author` field can be edited inline as chips instead of falling back to raw YAML.
+
 > [!NOTE]
 > For detailed documentation, see the [docs site](https://callumalpass.github.io/obsidian-biblib)
 
@@ -65,7 +68,20 @@ tags:
 ```
 
 > [!NOTE]
-> BibLib patches Obsidian's Properties UI for the structured `author` field, so you can edit CSL author lists directly there. Other nested CSL fields may still need Source Mode.
+> Use the standard CSL `author` field. In this customized build, BibLib patches Obsidian's Properties UI so structured authors can be edited inline there as chips. Other nested CSL fields may still need Source Mode.
+
+## Structured author editing
+
+The `author` property remains a proper CSL array of objects in frontmatter, but in Properties it is rendered with an inline editor:
+
+- click an author chip to edit it
+- click `×` to remove an author
+- click `+` to add an author
+- `Enter` confirms the current inline edit
+- `Esc` cancels the current inline edit
+- clicking away collapses the inline editor; partially entered values are saved, while empty add-forms are dismissed
+
+This keeps the stored YAML standards-compliant while making day-to-day editing much less awkward.
 
 ## Settings
 

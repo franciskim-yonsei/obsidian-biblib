@@ -47,6 +47,7 @@ class AuthorPropertyWidgetRenderer implements MetadataWidgetRenderer {
     private authors: CslName[];
     private editingIndex: number | null = null;
     private addingNew = false;
+    private cleanupActiveFormListeners: (() => void) | null = null;
 
     constructor(
         private readonly containerEl: HTMLElement,
@@ -57,6 +58,15 @@ class AuthorPropertyWidgetRenderer implements MetadataWidgetRenderer {
         containerEl.addClass('yaml-struct-author-widget');
         containerEl.setAttribute('tabindex', '0');
         containerEl.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && (this.addingNew || this.editingIndex !== null)) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.editingIndex = null;
+                this.addingNew = false;
+                this.renderWidget();
+                return;
+            }
+
             if ((event.key === 'Enter' || event.key === ' ') && !this.addingNew && this.editingIndex === null) {
                 event.preventDefault();
                 this.addingNew = true;
@@ -71,13 +81,47 @@ class AuthorPropertyWidgetRenderer implements MetadataWidgetRenderer {
     }
 
     private commit(): void {
+        this.clearActiveFormListeners();
         this.editingIndex = null;
         this.addingNew = false;
         this.renderWidget();
         this.context.onChange([...this.authors]);
     }
 
+    private clearActiveFormListeners(): void {
+        this.cleanupActiveFormListeners?.();
+        this.cleanupActiveFormListeners = null;
+    }
+
+    private registerActiveFormListeners(onDismiss: () => void): void {
+        this.clearActiveFormListeners();
+
+        const handlePointerDown = (event: Event): void => {
+            const target = event.target;
+            if (target instanceof Node && this.containerEl.contains(target)) {
+                return;
+            }
+            onDismiss();
+        };
+
+        const handleFocusIn = (event: Event): void => {
+            const target = event.target;
+            if (target instanceof Node && this.containerEl.contains(target)) {
+                return;
+            }
+            onDismiss();
+        };
+
+        document.addEventListener('pointerdown', handlePointerDown, true);
+        document.addEventListener('focusin', handleFocusIn, true);
+        this.cleanupActiveFormListeners = () => {
+            document.removeEventListener('pointerdown', handlePointerDown, true);
+            document.removeEventListener('focusin', handleFocusIn, true);
+        };
+    }
+
     private renderWidget(): void {
+        this.clearActiveFormListeners();
         this.containerEl.empty();
 
         this.authors.forEach((author, index) => {
@@ -131,99 +175,23 @@ class AuthorPropertyWidgetRenderer implements MetadataWidgetRenderer {
     }
 
     private renderInlineForm(container: HTMLElement, author: CslName, index: number): void {
-        const form = container.createSpan({ cls: 'yaml-struct-inline-form' });
-
-        const givenInput = form.createEl('input', {
-            type: 'text',
-            attr: { placeholder: 'Given' },
-        });
-        givenInput.value = author.given ?? '';
-
-        const familyInput = form.createEl('input', {
-            type: 'text',
-            attr: { placeholder: 'Family' },
-        });
-        familyInput.value = author.family ?? '';
-
-        const confirm = (): void => {
-            const given = givenInput.value.trim();
-            const family = familyInput.value.trim();
+        this.renderForm(container, author, (given, family) => {
             if (given || family) {
-                this.authors[index] = { ...(given && { given }), ...(family && { family }) };
-                this.editingIndex = null;
-                this.commit();
+                // Preserve all existing CslName fields; only overwrite given/family
+                this.authors[index] = { ...this.authors[index], given: given || undefined, family: family || undefined };
             } else {
                 this.authors.splice(index, 1);
-                this.editingIndex = null;
-                this.commit();
             }
-        };
-
-        const cancel = (): void => {
+            this.editingIndex = null;
+            this.commit();
+        }, () => {
             this.editingIndex = null;
             this.renderWidget();
-        };
-
-        givenInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                event.stopPropagation();
-                familyInput.focus();
-            } else if (event.key === 'Escape') {
-                event.preventDefault();
-                event.stopPropagation();
-                cancel();
-            }
         });
-
-        familyInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                event.stopPropagation();
-                confirm();
-            } else if (event.key === 'Escape') {
-                event.preventDefault();
-                event.stopPropagation();
-                cancel();
-            }
-        });
-
-        const confirmButton = form.createEl('button', {
-            cls: 'yaml-struct-form-confirm',
-            attr: { type: 'button', 'aria-label': 'Confirm' },
-        });
-        confirmButton.setText('✓');
-        confirmButton.addEventListener('mousedown', (event) => {
-            event.preventDefault();
-            confirm();
-        });
-        confirmButton.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                event.stopPropagation();
-                confirm();
-            }
-        });
-
-        window.setTimeout(() => givenInput.focus(), 0);
     }
 
     private renderAddForm(container: HTMLElement): void {
-        const form = container.createSpan({ cls: 'yaml-struct-inline-form' });
-
-        const givenInput = form.createEl('input', {
-            type: 'text',
-            attr: { placeholder: 'Given' },
-        });
-
-        const familyInput = form.createEl('input', {
-            type: 'text',
-            attr: { placeholder: 'Family' },
-        });
-
-        const confirm = (): void => {
-            const given = givenInput.value.trim();
-            const family = familyInput.value.trim();
+        this.renderForm(container, null, (given, family) => {
             if (given || family) {
                 this.authors.push({ ...(given && { given }), ...(family && { family }) });
                 this.addingNew = false;
@@ -232,12 +200,79 @@ class AuthorPropertyWidgetRenderer implements MetadataWidgetRenderer {
                 this.addingNew = false;
                 this.renderWidget();
             }
+        }, () => {
+            this.addingNew = false;
+            this.renderWidget();
+        });
+    }
+
+    private renderForm(
+        container: HTMLElement,
+        initial: CslName | null,
+        onConfirm: (given: string, family: string) => void,
+        onCancel: () => void,
+    ): void {
+        const form = container.createSpan({ cls: 'yaml-struct-inline-form' });
+
+        const givenInput = form.createEl('input', {
+            type: 'text',
+            attr: { placeholder: 'Given' },
+        });
+        givenInput.value = initial?.given ?? '';
+
+        const familyInput = form.createEl('input', {
+            type: 'text',
+            attr: { placeholder: 'Family' },
+        });
+        familyInput.value = initial?.family ?? '';
+
+        let dismissed = false;
+        const hasValues = (): boolean => Boolean(givenInput.value.trim() || familyInput.value.trim());
+        const confirm = (): void => {
+            if (dismissed) {
+                return;
+            }
+            dismissed = true;
+            onConfirm(givenInput.value.trim(), familyInput.value.trim());
         };
 
         const cancel = (): void => {
-            this.addingNew = false;
-            this.renderWidget();
+            if (dismissed) {
+                return;
+            }
+            dismissed = true;
+            onCancel();
         };
+
+        const dismissIfFocusLeftForm = (): void => {
+            window.setTimeout(() => {
+                if (dismissed) {
+                    return;
+                }
+
+                const activeElement = document.activeElement;
+                if (activeElement instanceof Node && form.contains(activeElement)) {
+                    return;
+                }
+
+                if (hasValues()) {
+                    confirm();
+                } else {
+                    cancel();
+                }
+            }, 0);
+        };
+
+        this.registerActiveFormListeners(() => {
+            if (hasValues()) {
+                confirm();
+            } else {
+                cancel();
+            }
+        });
+
+        givenInput.addEventListener('blur', dismissIfFocusLeftForm);
+        familyInput.addEventListener('blur', dismissIfFocusLeftForm);
 
         givenInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
@@ -277,8 +312,13 @@ class AuthorPropertyWidgetRenderer implements MetadataWidgetRenderer {
                 event.preventDefault();
                 event.stopPropagation();
                 confirm();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                cancel();
             }
         });
+        confirmButton.addEventListener('blur', dismissIfFocusLeftForm);
 
         window.setTimeout(() => givenInput.focus(), 0);
     }

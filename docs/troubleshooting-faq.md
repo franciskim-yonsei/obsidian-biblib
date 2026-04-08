@@ -4,7 +4,7 @@ This page provides solutions to common issues.
 
 **Q: Why do I still see YAML warnings in the Obsidian Properties panel?**
 
-**A:** BibLib patches the structured `author` field so it can be edited directly in Properties. Other nested CSL structures are still constrained by Obsidian's native metadata parser and may need to be edited in Source Mode.
+**A:** BibLib patches the structured `author` field so it can be edited directly in Properties with an inline chip editor. Other nested CSL structures are still constrained by Obsidian's native metadata parser and may need to be edited in Source Mode.
 
 **Q: The Zotero Connector integration is not working.**
 
@@ -32,7 +32,7 @@ This page provides solutions to common issues.
 
 **Q: How do I edit complex CSL fields like authors?**
 
-**A:** Use the patched `author` field in Obsidian's Properties view for authors. For other complex CSL fields, edit the YAML directly in Source Mode. The `author` field still uses an array of objects:
+**A:** Use the patched `author` field in Obsidian's Properties view for authors. It supports inline chip editing: click a chip to edit, `×` to remove, `+` to add, `Enter` to confirm, `Esc` to cancel, and click away to collapse the active form. For other complex CSL fields, edit the YAML directly in Source Mode. The stored `author` field remains a CSL array of objects:
 ```yaml
 author:
   - family: Smith
