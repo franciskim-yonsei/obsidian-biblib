@@ -5,6 +5,7 @@ import { TemplateEngine } from '../utils/template-engine';
 import { TemplateVariableBuilderService } from './template-variable-builder-service';
 import { processYamlArray } from '../utils/yaml-utils';
 import { DateParser } from '../utils/date-parser';
+import { NameParser } from '../utils/name-parser';
 
 /**
  * Input for building a YAML frontmatter
@@ -110,15 +111,24 @@ export class FrontmatterBuilderService {
     frontmatter: Record<string, any>, 
     contributors: Contributor[]
   ): void {
+    const contributorsByRole: Record<string, Contributor[]> = {};
+
     contributors.forEach(contributor => {
-      // Only include entries with at least one name or other identifier
-      if (contributor.family || contributor.given || contributor.literal) {
-        if (!frontmatter[contributor.role]) {
-          frontmatter[contributor.role] = [];
-        }
-        // Copy all contributor properties except the role
-        const { role, ...personData } = contributor;
-        frontmatter[contributor.role].push(personData);
+      if (!(contributor.family || contributor.given || contributor.literal)) {
+        return;
+      }
+
+      if (!contributorsByRole[contributor.role]) {
+        contributorsByRole[contributor.role] = [];
+      }
+
+      contributorsByRole[contributor.role].push(contributor);
+    });
+
+    Object.entries(contributorsByRole).forEach(([role, roleContributors]) => {
+      const storedNames = NameParser.toStorageStrings(roleContributors);
+      if (storedNames.length > 0) {
+        frontmatter[role] = storedNames;
       }
     });
   }

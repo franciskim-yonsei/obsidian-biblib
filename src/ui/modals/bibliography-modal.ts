@@ -9,6 +9,7 @@ import { CitekeyGenerator } from '../../utils/citekey-generator';
 import { CSL_DATE_FIELDS, CSL_TYPES } from '../../utils/csl-variables';
 import { NoteCreationService } from '../../services';
 import { DateParser } from '../../utils/date-parser';
+import { NameParser } from '../../utils/name-parser';
 import {
     ERROR_MESSAGES,
     SUCCESS_MESSAGES,
@@ -518,11 +519,16 @@ export class BibliographyModal extends BaseBibliographyModal {
             
             let hasContributors = false;
             contributorTypes.forEach(role => {
-                if (cslData[role] && Array.isArray(cslData[role])) {
+                const contributors = NameParser.toContributors(cslData[role], role);
+                if (contributors.length > 0) {
                     hasContributors = true;
-                    cslData[role].forEach((person: any) => {
-                        // Create field in UI
-                        this.addContributorField(role, person.family, person.given, person.literal);
+                    contributors.forEach(person => {
+                        this.addContributorField(
+                            role,
+                            person.family || '',
+                            person.given || '',
+                            person.literal || ''
+                        );
                     });
                 }
             });

@@ -12,6 +12,7 @@ import {
     CSL_DATE_FIELDS
 } from '../../utils/csl-variables';
 import { DateParser } from '../../utils/date-parser';
+import { NameParser } from '../../utils/name-parser';
 import { CitoidService } from '../../services/api/citoid';
 import { NoteCreationService, CitationService, TemplateVariableBuilderService } from '../../services';
 
@@ -319,8 +320,9 @@ export class EditBibliographyModal extends BibliographyModal {
             
             // Update frontmatter with contributors
             for (const [role, names] of Object.entries(contributorsByRole)) {
-                if (names.length > 0) {
-                    finalFrontmatterOutput[role] = names;
+                const storedNames = NameParser.toStorageStrings(names);
+                if (storedNames.length > 0) {
+                    finalFrontmatterOutput[role] = storedNames;
                 } else {
                     delete finalFrontmatterOutput[role];
                 }
@@ -391,8 +393,19 @@ export class EditBibliographyModal extends BibliographyModal {
             // Update custom frontmatter fields if requested
             if (this.updateCustomFrontmatterOnSave) {
                 const templateVariableBuilder = new TemplateVariableBuilderService();
+                const templateCitation = {
+                    ...finalFrontmatterOutput,
+                    ...updatedModalData.citation
+                };
+
+                for (const [role, names] of Object.entries(contributorsByRole)) {
+                    if (names.length > 0) {
+                        templateCitation[role] = names;
+                    }
+                }
+
                 const templateVariables = templateVariableBuilder.buildVariables(
-                    finalFrontmatterOutput,
+                    templateCitation,
                     updatedModalData.contributors,
                     updatedModalData.attachmentData.map(a => a.path).filter((p): p is string => p !== undefined),
                     updatedModalData.relatedNotePaths

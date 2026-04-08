@@ -4,6 +4,8 @@ import Cite from 'citation-js';
 import '@citation-js/plugin-bibtex';
 import { AttachmentManagerService } from './attachment-manager-service';
 import { DateParser } from '../utils/date-parser';
+import { NameParser } from '../utils/name-parser';
+import { CSL_NAME_FIELDS } from '../utils/csl-variables';
 
 /**
  * Interface representing a literature note with its file and parsed frontmatter.
@@ -379,6 +381,15 @@ export class BibliographyBuilder {
 
             if (issuedFromFields) {
                 processedData.issued = issuedFromFields;
+            }
+        }
+
+        for (const field of CSL_NAME_FIELDS) {
+            const normalizedNames = NameParser.toCslNames(processedData[field]);
+            if (normalizedNames.length > 0) {
+                processedData[field] = normalizedNames;
+            } else {
+                delete processedData[field];
             }
         }
 

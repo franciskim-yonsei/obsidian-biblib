@@ -4,6 +4,7 @@ import { BaseBibliographyModal } from './base-bibliography-modal';
 import { BibliographyPluginSettings } from '../../types/settings';
 import { Contributor, AdditionalField, Citation, AttachmentData, AttachmentType } from '../../types/citation';
 import { CitekeyGenerator } from '../../utils/citekey-generator';
+import { NameParser } from '../../utils/name-parser';
 import { NoteCreationService, CitationService } from '../../services';
 
 // Define type for book entries used in this modal
@@ -508,16 +509,7 @@ export class ChapterModal extends BaseBibliographyModal {
             }
             
             // Next, check for book authors to add as container-authors
-            let containerAuthors: any[] = [];
-            if (fm.author && Array.isArray(fm.author)) {
-                containerAuthors = fm.author.map((author: any) => ({...author, role: 'container-author'}));
-            } 
-            else if (fm.author && typeof fm.author === 'object' && !Array.isArray(fm.author)) {
-                containerAuthors = [{...fm.author, role: 'container-author'}];
-            }
-            else if (fm.author && typeof fm.author === 'string' && fm.author.trim()) {
-                containerAuthors = [{role: 'container-author', literal: fm.author.trim()}];
-            }
+            const containerAuthors = NameParser.toContributors(fm.author, 'container-author');
             
             // Add all container authors found
             if (containerAuthors.length > 0) {
@@ -796,26 +788,10 @@ export class ChapterModal extends BaseBibliographyModal {
                 // Only add book authors if we don't have chapter authors
                 const hasChapterAuthors = finalUserContributors.some(c => c.role === 'author');
                 
-                if (!hasChapterAuthors && this.selectedBook.frontmatter.author && 
-                    Array.isArray(this.selectedBook.frontmatter.author)) {
-                    
-                    this.selectedBook.frontmatter.author.forEach((person: any) => {
-                        if (typeof person === 'object') {
-                            bookContributors.push({
-                                role: 'author',
-                                family: person.family || '',
-                                given: person.given || '',
-                                literal: person.literal || ''
-                            });
-                        } else if (typeof person === 'string' && person.trim()) {
-                            bookContributors.push({
-                                role: 'author',
-                                family: '',
-                                given: '', 
-                                literal: person.trim()
-                            });
-                        }
-                    });
+                if (!hasChapterAuthors) {
+                    bookContributors.push(
+                        ...NameParser.toContributors(this.selectedBook.frontmatter.author, 'author')
+                    );
                 }
             }
             

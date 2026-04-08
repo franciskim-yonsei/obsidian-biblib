@@ -3,6 +3,7 @@ import { BibliographyPluginSettings, hasLiteratureNoteTag, parseLiteratureNoteTa
 import { Citation, Contributor, AdditionalField, AttachmentData, AttachmentType } from '../types/citation';
 import { ReferenceParserService, ParsedReference } from './reference-parser-service';
 import { NoteContentBuilderService } from './note-content-builder-service';
+import { NameParser } from '../utils/name-parser';
 import { AttachmentManagerService } from './attachment-manager-service';
 import { CitekeyGenerator } from '../utils/citekey-generator';
 import { DateParser } from '../utils/date-parser';
@@ -587,18 +588,7 @@ export class NoteCreationService {
     const contributorTypes = ['author', 'editor', 'translator', 'contributor', 'director'];
     
     for (const type of contributorTypes) {
-      if (cslObject[type] && Array.isArray(cslObject[type])) {
-        for (const person of cslObject[type]) {
-          if (typeof person === 'object' && person !== null) {
-            contributors.push({
-              role: type,
-              family: person.family || '',
-              given: person.given || '',
-              literal: person.literal || ''
-            });
-          }
-        }
-      }
+      contributors.push(...NameParser.toContributors(cslObject[type], type));
     }
     
     return contributors;
