@@ -2,7 +2,8 @@ import { Notice, Platform } from "obsidian";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
-import { PtyManager } from "./pty-manager";
+import { PtyManager, getPreferredWindowsBackend } from "./pty-manager";
+import type { WindowsTerminalBackend } from "./pty-manager";
 import { getTheme } from "./themes";
 import type { TerminalPluginSettings } from "./settings";
 import type { NotificationSound } from "./settings";
@@ -109,23 +110,25 @@ function playNotificationSound(sound: NotificationSound, volume: number): void {
   }
 }
 
-function getWindowsPtyOptions():
+function getWindowsPtyOptions(
+  backend: WindowsTerminalBackend | undefined = getPreferredWindowsBackend()
+):
   | {
-      backend: "winpty";
+      backend: WindowsTerminalBackend;
       buildNumber?: number;
     }
   | undefined {
-  if (!Platform.isWin) return undefined;
+  if (!Platform.isWin || !backend) return undefined;
 
   try {
     const os = (window as any).require("os");
     const rawBuild = os.release().split(".").pop();
     const buildNumber = rawBuild ? Number.parseInt(rawBuild, 10) : Number.NaN;
     return Number.isFinite(buildNumber)
-      ? { backend: "winpty", buildNumber }
-      : { backend: "winpty" };
+      ? { backend, buildNumber }
+      : { backend };
   } catch {
-    return { backend: "winpty" };
+    return { backend };
   }
 }
 
@@ -252,7 +255,10 @@ export class TerminalTabManager {
       }
 
       try {
-        pty.spawn(this.settings.shellPath, this.cwd, cols, rows);
+        const backend = pty.spawn(this.settings.shellPath, this.cwd, cols, rows);
+        if (Platform.isWin) {
+          terminal.options.windowsPty = getWindowsPtyOptions(backend);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "unknown error";
         console.error("Terminal: failed to spawn shell", err);

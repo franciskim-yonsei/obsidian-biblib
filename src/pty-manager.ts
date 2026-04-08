@@ -1,6 +1,8 @@
 import { Platform } from "obsidian";
 import { getShellIntegration } from "./shell-integration";
 
+export type WindowsTerminalBackend = "conpty" | "winpty";
+
 interface IPtyProcess {
   pid: number;
   write(data: string): void;
@@ -23,6 +25,25 @@ interface NodePtyModule {
       useConpty?: boolean;
     }
   ): IPtyProcess;
+}
+
+function getWindowsBuildNumber(): number | undefined {
+  if (!Platform.isWin) return undefined;
+
+  try {
+    const os = window.require("os") as typeof import("os");
+    const rawBuild = os.release().split(".").pop();
+    const buildNumber = rawBuild ? Number.parseInt(rawBuild, 10) : Number.NaN;
+    return Number.isFinite(buildNumber) ? buildNumber : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function getPreferredWindowsBackend(): WindowsTerminalBackend | undefined {
+  const buildNumber = getWindowsBuildNumber();
+  if (buildNumber === undefined) return Platform.isWin ? "winpty" : undefined;
+  return buildNumber >= 18309 ? "conpty" : "winpty";
 }
 
 // node-pty is loaded at runtime via Electron's require, not bundled by esbuild.
@@ -98,7 +119,7 @@ export class PtyManager {
     cols: number,
     rows: number,
     env?: Record<string, string>
-  ): void {
+  ): WindowsTerminalBackend | undefined {
     this.nodePty = loadNodePty(this.pluginDir);
 
     const shell = shellPath || getDefaultShell();
@@ -111,20 +132,40 @@ export class PtyManager {
 
     const ptyEnv = {
       ...process.env,
+      ...(process.env.COLORTERM ? {} : { COLORTERM: "truecolor" }),
+      ...(process.env.TERM_PROGRAM ? {} : { TERM_PROGRAM: "Obsidian" }),
       ...si.env,
       ...env,
     };
 
-    this.ptyProcess = this.nodePty.spawn(shell, args, {
-      name: "xterm-256color",
-      cols,
-      rows,
-      cwd,
-      env: ptyEnv,
-      // Force winpty backend on Windows. Conpty requires Worker threads
-      // which Obsidian's Electron renderer does not support.
-      useConpty: false,
-    });
+    const spawnWithOptions = (useConpty?: boolean): void => {
+      this.ptyProcess = this.nodePty!.spawn(shell, args, {
+        name: "xterm-256color",
+        cols,
+        rows,
+        cwd,
+        env: ptyEnv,
+        ...(Platform.isWin ? { useConpty } : {}),
+      });
+    };
+
+    if (Platform.isWin) {
+      const preferredBackend = getPreferredWindowsBackend();
+      if (preferredBackend === "conpty") {
+        try {
+          spawnWithOptions(true);
+          return "conpty";
+        } catch (error) {
+          console.warn("Terminal: ConPTY spawn failed, falling back to winpty", error);
+        }
+      }
+
+      spawnWithOptions(false);
+      return "winpty";
+    }
+
+    spawnWithOptions();
+    return undefined;
   }
 
   write(data: string): void {
