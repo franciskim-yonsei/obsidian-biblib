@@ -9,7 +9,6 @@ import {
     type MetadataWidgetRenderer,
 } from '../internal/obsidian-metadata';
 import type { CslName } from '../types/citation';
-import { StructuredAuthorEditorModal } from '../ui/modals/structured-author-editor-modal';
 import { NameParser } from '../utils/name-parser';
 
 const AUTHOR_FIELD = 'author';
@@ -24,126 +23,274 @@ function formatCslName(name: CslName): string {
         return name.literal.trim();
     }
 
-    const parts = [
-        name.given,
-        name['dropping-particle'],
-        name['non-dropping-particle'],
-        name.family,
-    ]
+    const parts = [name.given, name.family]
         .filter((part): part is string => Boolean(part?.trim()))
         .map(part => part.trim());
 
-    let display = parts.join(' ').trim();
-    if (name.suffix?.trim()) {
-        display = display ? `${display}, ${name.suffix.trim()}` : name.suffix.trim();
-    }
-
-    return display;
+    return parts.join(' ');
 }
 
-function getDisplayNames(value: unknown): string[] {
-    return NameParser.toCslNames(value)
-        .map(author => formatCslName(author).trim())
-        .filter(author => author.length > 0);
+function getStructuredAuthors(value: unknown): CslName[] {
+    return NameParser.toCslNames(value).map(author => cloneAuthor(author));
 }
 
 function isAuthorValue(value: unknown): boolean {
     return (
         value == null ||
+        typeof value === 'string' ||
         Array.isArray(value) ||
         (typeof value === 'object' && value !== null)
     );
 }
 
 class AuthorPropertyWidgetRenderer implements MetadataWidgetRenderer {
-    private readonly authors: CslName[];
-    private readonly triggerEl: HTMLButtonElement;
-    private isEditing = false;
+    private authors: CslName[];
+    private editingIndex: number | null = null;
+    private addingNew = false;
 
     constructor(
-        private readonly plugin: BibliographyPlugin,
-        containerEl: HTMLElement,
+        private readonly containerEl: HTMLElement,
         value: unknown,
         private readonly context: MetadataWidgetRenderContext,
     ) {
-        this.authors = NameParser.toCslNames(value).map(author => cloneAuthor(author));
-        containerEl.addClass('yaml-struct-property-widget', 'multi-select-container');
-
-        const names = getDisplayNames(value);
-        this.triggerEl = containerEl.createEl('button', {
-            cls: 'yaml-struct-author-trigger',
-            attr: {
-                type: 'button',
-                'aria-label': names.length > 0 ? 'Edit authors' : 'Set authors',
-                title: names.length > 0 ? 'Edit authors' : 'Set authors',
-            },
-        });
-
-        const listEl = this.triggerEl.createDiv({ cls: 'yaml-struct-author-preview' });
-        if (names.length === 0) {
-            listEl.createSpan({
-                cls: 'yaml-struct-author-placeholder',
-                text: 'No authors',
-            });
-        } else {
-            for (const name of names) {
-                const pillEl = listEl.createDiv({ cls: 'yaml-struct-author-pill multi-select-pill' });
-                pillEl.createSpan({ cls: 'multi-select-pill-content', text: name });
+        this.authors = getStructuredAuthors(value);
+        containerEl.addClass('yaml-struct-author-widget');
+        containerEl.setAttribute('tabindex', '0');
+        containerEl.addEventListener('keydown', (event) => {
+            if ((event.key === 'Enter' || event.key === ' ') && !this.addingNew && this.editingIndex === null) {
+                event.preventDefault();
+                this.addingNew = true;
+                this.renderWidget();
             }
-        }
-
-        const actionEl = this.triggerEl.createSpan({ cls: 'yaml-struct-author-action clickable-icon' });
-        setIcon(actionEl, names.length > 0 ? 'pencil' : 'plus');
-
-        this.triggerEl.addEventListener('click', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            void this.openEditor();
         });
-
-        containerEl.addEventListener('dblclick', event => {
-            event.preventDefault();
-            event.stopPropagation();
-            void this.openEditor();
-        });
+        this.renderWidget();
     }
 
     focus(): void {
-        this.triggerEl.focus();
+        this.containerEl.focus();
     }
 
-    private async openEditor(): Promise<void> {
-        if (this.isEditing) {
-            return;
-        }
+    private commit(): void {
+        this.editingIndex = null;
+        this.addingNew = false;
+        this.renderWidget();
+        this.context.onChange([...this.authors]);
+    }
 
-        this.isEditing = true;
-        try {
-            const result = await new StructuredAuthorEditorModal(this.plugin.app, {
-                fileName: this.context.sourcePath || 'current note',
-                authorField: this.context.key,
-                initialAuthors: this.authors,
-            }).openAndGetResult();
+    private renderWidget(): void {
+        this.containerEl.empty();
 
-            if (!result.saved) {
-                return;
+        this.authors.forEach((author, index) => {
+            if (this.editingIndex === index) {
+                this.renderInlineForm(this.containerEl, author, index);
+            } else {
+                this.renderChip(this.containerEl, author, index);
             }
+        });
 
-            this.context.onChange(result.authors.length > 0 ? result.authors : []);
-            this.context.blur();
-        } finally {
-            this.isEditing = false;
+        if (this.addingNew) {
+            this.renderAddForm(this.containerEl);
+        } else {
+            const addButton = this.containerEl.createEl('button', {
+                cls: 'yaml-struct-add-chip-btn clickable-icon',
+                attr: { type: 'button', 'aria-label': 'Add author' },
+            });
+            setIcon(addButton, 'plus');
+            addButton.addEventListener('click', () => {
+                this.editingIndex = null;
+                this.addingNew = true;
+                this.renderWidget();
+            });
         }
+    }
+
+    private renderChip(container: HTMLElement, author: CslName, index: number): void {
+        const chip = container.createSpan({ cls: 'yaml-struct-author-chip' });
+
+        const label = chip.createSpan({
+            cls: 'yaml-struct-chip-label',
+            text: formatCslName(author) || '?',
+        });
+        label.addEventListener('click', () => {
+            this.editingIndex = index;
+            this.addingNew = false;
+            this.renderWidget();
+        });
+
+        const removeButton = chip.createEl('button', {
+            cls: 'yaml-struct-chip-remove',
+            attr: { type: 'button', 'aria-label': 'Remove' },
+        });
+        removeButton.setText('×');
+        removeButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            this.authors.splice(index, 1);
+            this.editingIndex = null;
+            this.commit();
+        });
+    }
+
+    private renderInlineForm(container: HTMLElement, author: CslName, index: number): void {
+        const form = container.createSpan({ cls: 'yaml-struct-inline-form' });
+
+        const givenInput = form.createEl('input', {
+            type: 'text',
+            attr: { placeholder: 'Given' },
+        });
+        givenInput.value = author.given ?? '';
+
+        const familyInput = form.createEl('input', {
+            type: 'text',
+            attr: { placeholder: 'Family' },
+        });
+        familyInput.value = author.family ?? '';
+
+        const confirm = (): void => {
+            const given = givenInput.value.trim();
+            const family = familyInput.value.trim();
+            if (given || family) {
+                this.authors[index] = { ...(given && { given }), ...(family && { family }) };
+                this.editingIndex = null;
+                this.commit();
+            } else {
+                this.authors.splice(index, 1);
+                this.editingIndex = null;
+                this.commit();
+            }
+        };
+
+        const cancel = (): void => {
+            this.editingIndex = null;
+            this.renderWidget();
+        };
+
+        givenInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                event.stopPropagation();
+                familyInput.focus();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                cancel();
+            }
+        });
+
+        familyInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                event.stopPropagation();
+                confirm();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                cancel();
+            }
+        });
+
+        const confirmButton = form.createEl('button', {
+            cls: 'yaml-struct-form-confirm',
+            attr: { type: 'button', 'aria-label': 'Confirm' },
+        });
+        confirmButton.setText('✓');
+        confirmButton.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            confirm();
+        });
+        confirmButton.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.stopPropagation();
+                confirm();
+            }
+        });
+
+        window.setTimeout(() => givenInput.focus(), 0);
+    }
+
+    private renderAddForm(container: HTMLElement): void {
+        const form = container.createSpan({ cls: 'yaml-struct-inline-form' });
+
+        const givenInput = form.createEl('input', {
+            type: 'text',
+            attr: { placeholder: 'Given' },
+        });
+
+        const familyInput = form.createEl('input', {
+            type: 'text',
+            attr: { placeholder: 'Family' },
+        });
+
+        const confirm = (): void => {
+            const given = givenInput.value.trim();
+            const family = familyInput.value.trim();
+            if (given || family) {
+                this.authors.push({ ...(given && { given }), ...(family && { family }) });
+                this.addingNew = false;
+                this.commit();
+            } else {
+                this.addingNew = false;
+                this.renderWidget();
+            }
+        };
+
+        const cancel = (): void => {
+            this.addingNew = false;
+            this.renderWidget();
+        };
+
+        givenInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                event.stopPropagation();
+                familyInput.focus();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                cancel();
+            }
+        });
+
+        familyInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                event.stopPropagation();
+                confirm();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                cancel();
+            }
+        });
+
+        const confirmButton = form.createEl('button', {
+            cls: 'yaml-struct-form-confirm',
+            attr: { type: 'button', 'aria-label': 'Confirm' },
+        });
+        confirmButton.setText('✓');
+        confirmButton.addEventListener('mousedown', (event) => {
+            event.preventDefault();
+            confirm();
+        });
+        confirmButton.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.stopPropagation();
+                confirm();
+            }
+        });
+
+        window.setTimeout(() => givenInput.focus(), 0);
     }
 }
 
-function createWidget(plugin: BibliographyPlugin): MetadataTypeWidget {
+function createWidget(_plugin: BibliographyPlugin): MetadataTypeWidget {
     return {
         name: () => 'CSL authors',
         type: BIBLIB_AUTHOR_WIDGET_TYPE,
         icon: 'lucide-users',
         validate: isAuthorValue,
-        render: (containerEl, value, context) => new AuthorPropertyWidgetRenderer(plugin, containerEl, value, context),
+        render: (containerEl, value, context) => new AuthorPropertyWidgetRenderer(containerEl, value, context),
     };
 }
 
@@ -167,6 +314,10 @@ export class AuthorPropertiesManager {
         return getMetadataTypeManager(this.plugin.app);
     }
 
+    private normalizeField(fieldName: string): string {
+        return fieldName.trim().toLowerCase();
+    }
+
     private registerWidget(): void {
         const metadataTypeManager = this.manager();
         this.previousWidget = metadataTypeManager.registeredTypeWidgets[BIBLIB_AUTHOR_WIDGET_TYPE] ?? null;
@@ -183,7 +334,7 @@ export class AuthorPropertiesManager {
     }
 
     private bindField(fieldName: string): void {
-        const normalizedFieldName = fieldName.toLowerCase();
+        const normalizedFieldName = this.normalizeField(fieldName);
         if (!normalizedFieldName) {
             return;
         }
@@ -194,14 +345,14 @@ export class AuthorPropertiesManager {
         }
 
         metadataTypeManager.assignedWidgets[normalizedFieldName] = {
-            name: fieldName,
+            name: fieldName.trim() || fieldName,
             widget: BIBLIB_AUTHOR_WIDGET_TYPE,
         };
         metadataTypeManager.trigger('changed', normalizedFieldName);
     }
 
     private unbindField(fieldName: string): void {
-        const normalizedFieldName = fieldName.toLowerCase();
+        const normalizedFieldName = this.normalizeField(fieldName);
         if (!normalizedFieldName) {
             return;
         }
