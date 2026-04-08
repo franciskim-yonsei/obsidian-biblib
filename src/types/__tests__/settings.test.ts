@@ -1,4 +1,4 @@
-import { parseLiteratureNoteTags } from '../settings';
+import { hasLiteratureNoteTag, matchesLiteratureNoteTagHierarchy, parseLiteratureNoteTags } from '../settings';
 
 describe('parseLiteratureNoteTags', () => {
 	describe('single tag handling', () => {
@@ -57,5 +57,48 @@ describe('parseLiteratureNoteTags', () => {
 		it('should handle tabs as separators', () => {
 			expect(parseLiteratureNoteTags('tag1\ttag2')).toEqual(['tag1', 'tag2']);
 		});
+	});
+});
+
+describe('matchesLiteratureNoteTagHierarchy', () => {
+	it('matches the exact configured tag', () => {
+		expect(matchesLiteratureNoteTagHierarchy('literature_note', 'literature_note')).toBe(true);
+	});
+
+	it('matches hierarchical subtags', () => {
+		expect(matchesLiteratureNoteTagHierarchy('literature_note/reading', 'literature_note')).toBe(true);
+		expect(matchesLiteratureNoteTagHierarchy('literature_note/reading/deep', 'literature_note')).toBe(true);
+	});
+
+	it('does not match unrelated tags with the same prefix', () => {
+		expect(matchesLiteratureNoteTagHierarchy('literature_notes', 'literature_note')).toBe(false);
+		expect(matchesLiteratureNoteTagHierarchy('literature_note-ish/subtag', 'literature_note')).toBe(false);
+	});
+
+	it('normalizes leading hash characters', () => {
+		expect(matchesLiteratureNoteTagHierarchy('#literature_note/subtag', 'literature_note')).toBe(true);
+		expect(matchesLiteratureNoteTagHierarchy('literature_note/subtag', '#literature_note')).toBe(true);
+	});
+});
+
+describe('hasLiteratureNoteTag', () => {
+	it('returns true for exact tag matches', () => {
+		expect(hasLiteratureNoteTag(['literature_note'], 'literature_note')).toBe(true);
+	});
+
+	it('returns true for hierarchical tag matches', () => {
+		expect(hasLiteratureNoteTag(['literature_note/reading'], 'literature_note')).toBe(true);
+	});
+
+	it('supports multiple configured tags', () => {
+		expect(hasLiteratureNoteTag(['project/reference'], 'literature_note, project')).toBe(true);
+	});
+
+	it('returns false when no configured tag matches', () => {
+		expect(hasLiteratureNoteTag(['project/reference'], 'literature_note')).toBe(false);
+	});
+
+	it('supports single-string frontmatter tags', () => {
+		expect(hasLiteratureNoteTag('literature_note/subtag', 'literature_note')).toBe(true);
 	});
 });

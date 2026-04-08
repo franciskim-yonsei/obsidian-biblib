@@ -3,7 +3,7 @@ import { BibliographyModal } from '../ui/modals/bibliography-modal';
 import { ChapterModal } from '../ui/modals/chapter-modal';
 import { BulkImportModal } from '../ui/modals/bulk-import-modal';
 import { EditBibliographyModal } from '../ui/modals/edit-bibliography-modal';
-import { BibliographyPluginSettings } from '../types/settings';
+import { BibliographyPluginSettings, hasLiteratureNoteTag } from '../types/settings';
 import { BibliographyBuilder } from '../services/bibliography-builder';
 import { ServiceManager } from './service-manager';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants';
@@ -59,8 +59,7 @@ export class CommandRegistry {
                 if (!cache || !cache.frontmatter) return false;
 
                 const frontmatter = cache.frontmatter;
-                const tags = frontmatter.tags;
-                if (!tags || !Array.isArray(tags) || !tags.includes(this.settings.literatureNoteTag)) {
+                if (!hasLiteratureNoteTag(frontmatter.tags, this.settings.literatureNoteTag)) {
                     return false;
                 }
 
@@ -121,8 +120,7 @@ export class CommandRegistry {
                     return false;
                 }
 
-                const tags = frontmatter.tags;
-                if (!tags || !Array.isArray(tags) || !tags.includes(this.settings.literatureNoteTag)) {
+                if (!hasLiteratureNoteTag(frontmatter.tags, this.settings.literatureNoteTag)) {
                     return false;
                 }
 

@@ -1,5 +1,5 @@
 import { App, Notice, TFile, TAbstractFile, normalizePath } from 'obsidian';
-import { BibliographyPluginSettings, parseLiteratureNoteTags } from '../types';
+import { BibliographyPluginSettings, hasLiteratureNoteTag, parseLiteratureNoteTags } from '../types';
 import { Citation, Contributor, AdditionalField, AttachmentData, AttachmentType } from '../types/citation';
 import { ReferenceParserService, ParsedReference } from './reference-parser-service';
 import { NoteContentBuilderService } from './note-content-builder-service';
@@ -737,9 +737,7 @@ export class NoteCreationService {
         
         if (!frontmatter) continue;
         
-        const tags = frontmatter.tags;
-        const configuredTags = parseLiteratureNoteTags(this.settings.literatureNoteTag);
-        if (!tags || !Array.isArray(tags) || !configuredTags.some(configuredTag => tags.includes(configuredTag))) continue;
+        if (!hasLiteratureNoteTag(frontmatter.tags, this.settings.literatureNoteTag)) continue;
         
         const type = frontmatter.type;
         if (!type || !['book', 'collection', 'document'].includes(type)) continue;

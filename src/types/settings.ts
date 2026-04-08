@@ -79,6 +79,61 @@ export function parseLiteratureNoteTags(tagString: string): string[] {
 		.filter(tag => tag.length > 0);
 }
 
+/**
+ * Normalize a tag for comparisons.
+ *
+ * Obsidian tags may appear with or without a leading # depending on the API
+ * surface. We also trim leading/trailing slashes so hierarchical comparisons
+ * behave consistently.
+ */
+export function normalizeTag(tag: string): string {
+	return tag.trim().replace(/^#/, '').replace(/^\/+|\/+$/g, '');
+}
+
+/**
+ * Returns true when a note tag matches a configured literature tag directly or
+ * as a descendant in a tag hierarchy.
+ *
+ * Examples:
+ * - literature_note matches literature_note
+ * - literature_note/reading matches literature_note
+ * - literature_note/reading/deep matches literature_note
+ */
+export function matchesLiteratureNoteTagHierarchy(noteTag: string, configuredTag: string): boolean {
+	const normalizedNoteTag = normalizeTag(noteTag);
+	const normalizedConfiguredTag = normalizeTag(configuredTag);
+
+	if (!normalizedNoteTag || !normalizedConfiguredTag) {
+		return false;
+	}
+
+	return (
+		normalizedNoteTag === normalizedConfiguredTag ||
+		normalizedNoteTag.startsWith(`${normalizedConfiguredTag}/`)
+	);
+}
+
+/**
+ * Returns true when the provided frontmatter tags contain any configured
+ * literature note tag, including hierarchical descendants.
+ */
+export function hasLiteratureNoteTag(tags: unknown, literatureNoteTagSetting: string): boolean {
+	const noteTags = Array.isArray(tags)
+		? tags.filter((tag): tag is string => typeof tag === 'string')
+		: typeof tags === 'string'
+			? [tags]
+			: [];
+
+	if (noteTags.length === 0) {
+		return false;
+	}
+
+	const configuredTags = parseLiteratureNoteTags(literatureNoteTagSetting);
+	return configuredTags.some(configuredTag =>
+		noteTags.some(noteTag => matchesLiteratureNoteTagHierarchy(noteTag, configuredTag))
+	);
+}
+
 // --- Interface for Overall Plugin Settings ---
 
 export interface BibliographyPluginSettings {

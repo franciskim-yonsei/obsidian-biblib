@@ -1,5 +1,5 @@
 import { App, Notice, TFile, Vault, normalizePath } from 'obsidian';
-import { BibliographyPluginSettings, parseLiteratureNoteTags } from '../types';
+import { BibliographyPluginSettings, hasLiteratureNoteTag } from '../types';
 import Cite from 'citation-js';
 import '@citation-js/plugin-bibtex';
 import { AttachmentManagerService } from './attachment-manager-service';
@@ -131,16 +131,9 @@ export class BibliographyBuilder {
                     continue;
                 }
 
-                // Check if the note has any of the configured literature note tags
-                // Parse the literatureNoteTag setting which may contain multiple comma/space-separated tags
-                const tags = frontmatter.tags;
-                const configuredTags = parseLiteratureNoteTags(this.settings.literatureNoteTag);
-                const hasLiteratureTag =
-                    tags &&
-                    Array.isArray(tags) &&
-                    configuredTags.some(configuredTag => tags.includes(configuredTag));
-
-                if (!hasLiteratureTag) {
+                // Check if the note has any of the configured literature note tags,
+                // including hierarchical subtags such as "literature_note/subtag".
+                if (!hasLiteratureNoteTag(frontmatter.tags, this.settings.literatureNoteTag)) {
                     continue;
                 }
 
