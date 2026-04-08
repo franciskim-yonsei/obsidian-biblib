@@ -3,6 +3,7 @@ import { BibliographyPluginSettings, hasLiteratureNoteTag } from '../types';
 import Cite from 'citation-js';
 import '@citation-js/plugin-bibtex';
 import { AttachmentManagerService } from './attachment-manager-service';
+import { DateParser } from '../utils/date-parser';
 
 /**
  * Interface representing a literature note with its file and parsed frontmatter.
@@ -274,7 +275,7 @@ export class BibliographyBuilder {
             
             // Add file path for reference
             return { 
-                ...cslData, 
+                ...this.normalizeFrontmatterForExport(cslData),
                 obsidianPath: note.file.path 
             };
         });
@@ -333,50 +334,7 @@ export class BibliographyBuilder {
             return;
         }
         try {
-            // Process the frontmatter data to handle empty date arrays
-            const dataArray = literatureNotes.map(note => {
-                const processedData = { ...note.frontmatter };
-                
-                // Fix for empty date-parts arrays in date fields
-                const dateFields = ['issued', 'accessed', 'container', 'event-date', 'original-date', 'submitted'];
-                for (const field of dateFields) {
-                    if (processedData[field] && 
-                        typeof processedData[field] === 'object' && 
-                        processedData[field]['date-parts'] && 
-                        Array.isArray(processedData[field]['date-parts'])) {
-                        
-                        // Check if date-parts contains empty arrays or has no valid date information
-                        const dateParts = processedData[field]['date-parts'];
-                        
-                        // More robust checking for valid date-parts structure
-                        let isValid = false;
-                        if (dateParts.length > 0) {
-                            for (const part of dateParts) {
-                                // Check if this part is an array and has valid date components
-                                if (Array.isArray(part) && part.length > 0) {
-                                    // Check if at least one component is a valid number
-                                    const hasValidComponent = part.some((component: any) => 
-                                        component !== null && 
-                                        component !== undefined && 
-                                        !isNaN(Number(component))
-                                    );
-                                    if (hasValidComponent) {
-                                        isValid = true;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (!isValid) {
-                            // Remove this date field entirely to avoid the error
-                            delete processedData[field];
-                        }
-                    }
-                }
-                
-                return processedData;
-            });
+            const dataArray = literatureNotes.map(note => this.normalizeFrontmatterForExport(note.frontmatter));
             
             const bib = new Cite(dataArray).get({ style: 'bibtex', type: 'string' });
             // Use the configured BibTeX file path directly
@@ -394,5 +352,56 @@ export class BibliographyBuilder {
             console.error('Error exporting BibTeX file:', error);
             new Notice('Error exporting BibTeX file. See console for details.');
         }
+    }
+
+    /**
+     * Convert Obsidian-friendly frontmatter back into exportable CSL-compatible data.
+     */
+    private normalizeFrontmatterForExport(frontmatter: any): any {
+        const processedData = { ...frontmatter };
+        const dateFields = ['issued', 'accessed', 'container', 'event-date', 'original-date', 'submitted'];
+
+        for (const field of dateFields) {
+            const normalizedDate = this.normalizeDateFieldForExport(processedData[field]);
+            if (normalizedDate) {
+                processedData[field] = normalizedDate;
+            } else {
+                delete processedData[field];
+            }
+        }
+
+        if (!processedData.issued) {
+            const issuedFromFields = DateParser.fromFields(
+                processedData.year?.toString() ?? '',
+                processedData.month?.toString(),
+                processedData.day?.toString()
+            );
+
+            if (issuedFromFields) {
+                processedData.issued = issuedFromFields;
+            }
+        }
+
+        return processedData;
+    }
+
+    private normalizeDateFieldForExport(value: any) {
+        if (value == null || value === '') {
+            return undefined;
+        }
+
+        if (
+            typeof value === 'object' &&
+            value !== null &&
+            'date-parts' in value &&
+            Array.isArray(value['date-parts']) &&
+            value['date-parts'].length === 0 &&
+            !value.raw &&
+            !value.literal
+        ) {
+            return undefined;
+        }
+
+        return DateParser.toCslDate(DateParser.parse(value));
     }
 }

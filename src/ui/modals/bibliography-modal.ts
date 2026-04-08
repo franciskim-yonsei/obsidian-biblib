@@ -6,8 +6,9 @@ import { Contributor, AdditionalField, Citation, AttachmentData, AttachmentType 
 import { CitoidService } from '../../services/api/citoid';
 import { CitationService } from '../../services/citation-service';
 import { CitekeyGenerator } from '../../utils/citekey-generator';
-import { CSL_TYPES } from '../../utils/csl-variables';
+import { CSL_DATE_FIELDS, CSL_TYPES } from '../../utils/csl-variables';
 import { NoteCreationService } from '../../services';
+import { DateParser } from '../../utils/date-parser';
 import {
     ERROR_MESSAGES,
     SUCCESS_MESSAGES,
@@ -489,28 +490,13 @@ export class BibliographyModal extends BaseBibliographyModal {
             this.abstractInput.value = cslData.abstract || '';
             this.editionInput.value = cslData.edition || '';
             
-            // Date field - build partial date string (YYYY, YYYY-MM, or YYYY-MM-DD)
-            if (cslData.issued && cslData.issued['date-parts'] &&
-                cslData.issued['date-parts'][0] && cslData.issued['date-parts'][0].length > 0) {
-                const dateParts = cslData.issued['date-parts'][0];
-                let dateStr = String(dateParts[0]);
-                if (dateParts[1]) {
-                    dateStr += `-${String(dateParts[1]).padStart(2, '0')}`;
-                    if (dateParts[2]) {
-                        dateStr += `-${String(dateParts[2]).padStart(2, '0')}`;
-                    }
-                }
-                this.dateInput.value = dateStr;
-            } else if (cslData.year) {
-                let dateStr = String(cslData.year);
-                if (cslData.month) {
-                    dateStr += `-${String(cslData.month).padStart(2, '0')}`;
-                    if (cslData.day) {
-                        dateStr += `-${String(cslData.day).padStart(2, '0')}`;
-                    }
-                }
-                this.dateInput.value = dateStr;
-            }
+            // Date field - accepts both CSL date objects and flat frontmatter strings.
+            const issuedValue = cslData.issued ?? DateParser.fromFields(
+                cslData.year?.toString() ?? '',
+                cslData.month?.toString(),
+                cslData.day?.toString()
+            );
+            this.dateInput.value = DateParser.toStorageString(issuedValue);
             
             // Language dropdown
             if (cslData.language) {
@@ -608,7 +594,7 @@ export class BibliographyModal extends BaseBibliographyModal {
                     let fieldType = 'standard';
                     if (typeof value === 'number') {
                         fieldType = 'number';
-                    } else if (typeof value === 'object' && value !== null && 'date-parts' in value) {
+                    } else if (CSL_DATE_FIELDS.includes(key) || (typeof value === 'object' && value !== null && 'date-parts' in value)) {
                         fieldType = 'date';
                     }
                     

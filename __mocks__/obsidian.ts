@@ -38,6 +38,52 @@ export function normalizePath(path: string): string {
   return path.replace(/\\/g, '/').replace(/\/+/g, '/');
 }
 
+function stringifyYamlValue(value: any, indent: string): string[] {
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return ['[]'];
+    }
+
+    return value.flatMap(item => {
+      if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
+        const lines = stringifyYamlObject(item, `${indent}  `);
+        const [firstLine, ...restLines] = lines;
+        return [`- ${firstLine}`, ...restLines];
+      }
+
+      return [`- ${String(item)}`];
+    });
+  }
+
+  if (value !== null && typeof value === 'object') {
+    return stringifyYamlObject(value, `${indent}  `);
+  }
+
+  return [String(value)];
+}
+
+function stringifyYamlObject(obj: Record<string, any>, indent = ''): string[] {
+  return Object.entries(obj).flatMap(([key, value]) => {
+    if (Array.isArray(value)) {
+      const lines = stringifyYamlValue(value, indent);
+      if (lines.length === 1 && lines[0] === '[]') {
+        return [`${indent}${key}: []`];
+      }
+      return [`${indent}${key}:`, ...lines.map(line => `${indent}${line}`)];
+    }
+
+    if (value !== null && typeof value === 'object') {
+      return [`${indent}${key}:`, ...stringifyYamlObject(value, `${indent}  `)];
+    }
+
+    return [`${indent}${key}: ${String(value)}`];
+  });
+}
+
+export function stringifyYaml(obj: Record<string, any>): string {
+  return stringifyYamlObject(obj).join('\n');
+}
+
 export class App {
   vault: Vault;
   metadataCache: MetadataCache;

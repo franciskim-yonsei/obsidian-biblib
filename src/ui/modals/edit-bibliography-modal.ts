@@ -11,6 +11,7 @@ import {
     CSL_NUMBER_FIELDS,
     CSL_DATE_FIELDS
 } from '../../utils/csl-variables';
+import { DateParser } from '../../utils/date-parser';
 import { CitoidService } from '../../services/api/citoid';
 import { NoteCreationService, CitationService, TemplateVariableBuilderService } from '../../services';
 
@@ -277,9 +278,26 @@ export class EditBibliographyModal extends BibliographyModal {
             
             // Merge CSL data from modal
             for (const [key, value] of Object.entries(updatedModalData.citation)) {
+                if (key === 'issued') {
+                    continue;
+                }
                 if (value !== undefined && value !== '') {
                     finalFrontmatterOutput[key] = value;
                 }
+            }
+
+            const issuedString = DateParser.toStorageString(
+                updatedModalData.citation.issued ?? DateParser.fromFields(
+                    updatedModalData.citation.year?.toString() ?? '',
+                    updatedModalData.citation.month?.toString(),
+                    updatedModalData.citation.day?.toString()
+                )
+            );
+
+            if (issuedString) {
+                finalFrontmatterOutput.issued = issuedString;
+            } else {
+                delete finalFrontmatterOutput.issued;
             }
             
             // Merge contributors
@@ -329,28 +347,10 @@ export class EditBibliographyModal extends BibliographyModal {
                         (typeof field.value === 'object' && (!field.value['date-parts'] || field.value['date-parts'].length === 0))) {
                         return;
                     }
-                    
-                    if (typeof field.value === 'object' && field.value !== null) {
-                        // Valid CSL date object
-                        finalFrontmatterOutput[field.name] = field.value;
-                    } else if (typeof field.value === 'string' && field.value !== '') {
-                        // Date string that wasn't converted to CSL format
-                        // Try to convert it
-                        const dateMatch = field.value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-                        if (dateMatch) {
-                            const cslDate = {
-                                'date-parts': [[
-                                    parseInt(dateMatch[1], 10),
-                                    parseInt(dateMatch[2], 10),
-                                    parseInt(dateMatch[3], 10)
-                                ]]
-                            };
-                            finalFrontmatterOutput[field.name] = cslDate;
-                        } else {
-                            // Store as raw date string if parsing fails
-                            const rawDate = { 'raw': field.value };
-                            finalFrontmatterOutput[field.name] = rawDate;
-                        }
+
+                    const storedDate = DateParser.toStorageString(field.value);
+                    if (storedDate) {
+                        finalFrontmatterOutput[field.name] = storedDate;
                     }
                 } else {
                     // For non-date fields, check standard empty conditions
@@ -402,8 +402,9 @@ export class EditBibliographyModal extends BibliographyModal {
                 for (const field of this.settings.customFrontmatterFields) {
                     if (field.enabled) {
                         try {
-                            // Skip if field name already exists in frontmatter (don't overwrite standard fields)
-                            if (finalFrontmatterOutput.hasOwnProperty(field.name)) {
+                            // Never overwrite real CSL fields from a custom template.
+                            // Non-CSL fields should be recomputed when this toggle is enabled.
+                            if (CSL_ALL_CSL_FIELDS.has(field.name)) {
                                 continue;
                             }
                             

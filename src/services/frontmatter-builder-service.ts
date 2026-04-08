@@ -4,6 +4,7 @@ import { Citation, Contributor, AdditionalField } from '../types/citation';
 import { TemplateEngine } from '../utils/template-engine';
 import { TemplateVariableBuilderService } from './template-variable-builder-service';
 import { processYamlArray } from '../utils/yaml-utils';
+import { DateParser } from '../utils/date-parser';
 
 /**
  * Input for building a YAML frontmatter
@@ -35,20 +36,20 @@ export class FrontmatterBuilderService {
   async buildYamlFrontmatter(data: FrontmatterInput): Promise<string> {
     try {
       const { citation, contributors, additionalFields, attachmentPaths, pluginSettings, relatedNotePaths } = data;
+      const issuedString = DateParser.toStorageString(
+        citation.issued ?? DateParser.fromFields(
+          citation.year != null ? String(citation.year) : '',
+          citation.month != null ? String(citation.month) : undefined,
+          citation.day != null ? String(citation.day) : undefined
+        )
+      );
       
       // Build base frontmatter object from essential citation fields
       const frontmatter: Record<string, any> = {
         id: citation.id,
         type: citation.type,
         title: citation.title,
-        // Use CSL date format for issued date
-        issued: {
-          'date-parts': [[
-            citation.year ? Number(citation.year) : undefined,
-            citation.month ? Number(citation.month) : undefined,
-            citation.day ? Number(citation.day) : undefined
-          ].filter(v => v !== undefined)], // Filter out undefined parts
-        },
+        ...(issuedString && { issued: issuedString }),
         // Add standard CSL fields (only if they have values)
         ...(citation['title-short'] && { 'title-short': citation['title-short'] }),
         ...(citation.page && { page: citation.page }),
@@ -155,22 +156,9 @@ export class FrontmatterBuilderService {
       
       // Format value based on field type
       if (field.type === 'date') {
-        // For date type fields, ensure they have the proper CSL date-parts structure
-        if (typeof field.value === 'object' && field.value['date-parts']) {
-          // It's already in CSL format
-          valueToAdd = field.value;
-        } else if (typeof field.value === 'string') {
-          // Try parsing date string (YYYY-MM-DD or YYYY)
-          const dateParts = field.value.split('-')
-            .map(Number)
-            .filter((part: number) => !isNaN(part));
-          
-          if (dateParts.length > 0) {
-            valueToAdd = { 'date-parts': [dateParts] };
-          } else {
-            // If parsing fails, store as string
-            valueToAdd = field.value;
-          }
+        valueToAdd = DateParser.toStorageString(field.value);
+        if (!valueToAdd) {
+          return;
         }
       } else if (field.type === 'number') {
         // Ensure numbers are stored as numbers, not strings

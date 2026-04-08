@@ -98,10 +98,9 @@ export class DateParser {
         month: string;
         day: string;
     } {
-        // Try issued['date-parts'] first
-        const issued = cslData.issued as CslDate | undefined;
-        if (issued?.['date-parts']?.[0]) {
-            const parts = issued['date-parts'][0];
+        const parsedIssued = this.parse(cslData.issued);
+        if (parsedIssued?.dateParts?.length) {
+            const parts = parsedIssued.dateParts;
             return {
                 year: parts[0]?.toString() ?? '',
                 month: parts[1]?.toString() ?? '',
@@ -149,6 +148,23 @@ export class DateParser {
         }
 
         return parsed.raw ?? '';
+    }
+
+    /**
+     * Normalize any supported date input to the string format used in frontmatter.
+     *
+     * This preserves partial dates as:
+     * - YYYY
+     * - YYYY-MM
+     * - YYYY-MM-DD
+     *
+     * Unstructured values fall back to their raw string representation.
+     *
+     * @param input - Date string, CSL date object, or object with raw property
+     * @returns Normalized frontmatter date string
+     */
+    static toStorageString(input: unknown): string {
+        return this.toFormString(this.parse(input));
     }
 
     /**
