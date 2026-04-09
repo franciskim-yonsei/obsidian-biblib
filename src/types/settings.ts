@@ -141,6 +141,7 @@ export interface BibliographyPluginSettings {
         literatureNotePath: string;
         filenameTemplate: string; // Filename template option
         createAttachmentSubfolder: boolean;
+        frontmatterFieldOrder: string[];
         // Bibliography and file options
         bibliographyJsonPath: string;
         citekeyListPath: string;
@@ -175,11 +176,69 @@ export interface BibliographyPluginSettings {
 
 // --- Default Plugin Settings ---
 
+export const DEFAULT_FRONTMATTER_FIELD_ORDER: string[] = [
+        'id',
+        'type',
+        'title',
+        'issued',
+        'title-short',
+        'page',
+        'URL',
+        'DOI',
+        'container-title',
+        'publisher',
+        'publisher-place',
+        'edition',
+        'volume',
+        'number',
+        'language',
+        'abstract',
+        'tags',
+        'author',
+        'editor',
+        'translator',
+        'container-author',
+        'accessed',
+        'year',
+        'dateCreated',
+        'reading-status',
+        'aliases',
+        'author-links',
+        'attachment',
+        'related'
+];
+
+export function normalizeFrontmatterFieldOrder(order: unknown): string[] {
+        if (!Array.isArray(order)) {
+                return [...DEFAULT_FRONTMATTER_FIELD_ORDER];
+        }
+
+        const normalized: string[] = [];
+        const seen = new Set<string>();
+
+        for (const value of order) {
+                if (typeof value !== 'string') {
+                        continue;
+                }
+
+                const trimmed = value.trim();
+                if (!trimmed || seen.has(trimmed)) {
+                        continue;
+                }
+
+                normalized.push(trimmed);
+                seen.add(trimmed);
+        }
+
+        return normalized;
+}
+
 export const DEFAULT_SETTINGS: BibliographyPluginSettings = {
         attachmentFolderPath: 'biblib',
         literatureNotePath: '/',
         filenameTemplate: '@{{citekey}}',
         createAttachmentSubfolder: true,
+        frontmatterFieldOrder: [...DEFAULT_FRONTMATTER_FIELD_ORDER],
         bibliographyJsonPath: 'biblib/bibliography.json',
         citekeyListPath: 'citekeylist.md',
         bibtexFilePath: 'biblib/bibliography.bib',

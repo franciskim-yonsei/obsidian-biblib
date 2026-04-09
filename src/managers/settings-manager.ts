@@ -1,5 +1,5 @@
 import { Plugin } from 'obsidian';
-import { BibliographyPluginSettings, DEFAULT_SETTINGS } from '../types/settings';
+import { BibliographyPluginSettings, DEFAULT_SETTINGS, normalizeFrontmatterFieldOrder } from '../types/settings';
 
 /**
  * Manages the loading, saving, and validation of plugin settings
@@ -46,6 +46,10 @@ export class SettingsManager {
             };
         }
 
+        if (newSettings.frontmatterFieldOrder !== undefined) {
+            this.settings.frontmatterFieldOrder = normalizeFrontmatterFieldOrder(newSettings.frontmatterFieldOrder);
+        }
+
         // Save the updated settings
         await this.saveSettings();
         return this.settings;
@@ -88,6 +92,8 @@ export class SettingsManager {
             mergedSettings.customFrontmatterFields = DEFAULT_SETTINGS.customFrontmatterFields;
         }
 
+        mergedSettings.frontmatterFieldOrder = normalizeFrontmatterFieldOrder(loadedData.frontmatterFieldOrder);
+
         // Handle legacy settings migrations
         this.migrateFromLegacySettings(mergedSettings, loadedData);
 
@@ -117,5 +123,7 @@ export class SettingsManager {
         if (loadedData.oldAttachmentFolder && !loadedData.attachmentFolderPath) {
             mergedSettings.attachmentFolderPath = loadedData.oldAttachmentFolder;
         }
+
+        mergedSettings.frontmatterFieldOrder = normalizeFrontmatterFieldOrder(mergedSettings.frontmatterFieldOrder);
     }
 }

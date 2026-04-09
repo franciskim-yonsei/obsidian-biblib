@@ -1,7 +1,61 @@
 import { Setting, Notice } from 'obsidian';
 import BibliographyPlugin from '../../../main';
 import { CSL_ALL_CSL_FIELDS } from '../../utils/csl-variables';
-import { FavoriteLanguage } from '../../types/settings';
+import {
+    FavoriteLanguage,
+    DEFAULT_FRONTMATTER_FIELD_ORDER,
+    normalizeFrontmatterFieldOrder
+} from '../../types/settings';
+
+/**
+ * Renders frontmatter organization section
+ */
+export function renderFrontmatterOrganizationSection(
+    containerEl: HTMLElement,
+    plugin: BibliographyPlugin,
+    refreshDisplay: () => void
+): void {
+    plugin.settings.frontmatterFieldOrder = normalizeFrontmatterFieldOrder(plugin.settings.frontmatterFieldOrder);
+
+    new Setting(containerEl)
+        .setName('Frontmatter organization')
+        .setHeading();
+
+    containerEl.createEl('p', {
+        text: 'One field per line, in the order you want them in the YAML frontmatter. Fields not listed are appended afterwards in their existing order.',
+        cls: 'setting-item-description'
+    });
+
+    const textarea = containerEl.createEl('textarea', {
+        attr: {
+            rows: '14',
+            spellcheck: 'false',
+            placeholder: 'id\ntitle\nauthor\n...'
+        }
+    });
+    textarea.style.cssText = 'width: 100%; font-family: var(--font-monospace); font-size: var(--font-smaller); resize: vertical; padding: 8px; box-sizing: border-box; margin-bottom: 8px; display: block;';
+    textarea.value = plugin.settings.frontmatterFieldOrder.join('\n');
+
+    textarea.addEventListener('blur', async () => {
+        const lines = textarea.value
+            .split('\n')
+            .map(l => l.trim())
+            .filter(l => l.length > 0);
+        plugin.settings.frontmatterFieldOrder = normalizeFrontmatterFieldOrder(lines);
+        textarea.value = plugin.settings.frontmatterFieldOrder.join('\n');
+        await plugin.saveSettings();
+    });
+
+    new Setting(containerEl)
+        .addButton(button => button
+            .setButtonText('Reset to defaults')
+            .onClick(async () => {
+                plugin.settings.frontmatterFieldOrder = [...DEFAULT_FRONTMATTER_FIELD_ORDER];
+                textarea.value = plugin.settings.frontmatterFieldOrder.join('\n');
+                await plugin.saveSettings();
+            })
+        );
+}
 
 /**
  * Renders custom frontmatter fields section

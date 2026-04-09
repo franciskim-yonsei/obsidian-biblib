@@ -25,6 +25,7 @@ Example:
 
 ## Changed
 
+- Added a new **Frontmatter organization** settings UI so you can control the default order of generated YAML frontmatter fields
 - Ported the inline structured `author` editor from the yaml-struct plugin into BibLib's Obsidian Properties integration
 - Improved the inline author editor so `Esc` cancels and leaving the field collapses the active inline form
 - Updated README and documentation to describe the customized build and the current structured `author` workflow

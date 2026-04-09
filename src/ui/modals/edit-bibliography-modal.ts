@@ -13,6 +13,7 @@ import {
 } from '../../utils/csl-variables';
 import { DateParser } from '../../utils/date-parser';
 import { NameParser } from '../../utils/name-parser';
+import { organizeFrontmatter } from '../../utils/frontmatter-organization';
 import { CitoidService } from '../../services/api/citoid';
 import { NoteCreationService, CitationService, TemplateVariableBuilderService } from '../../services';
 
@@ -466,8 +467,13 @@ export class EditBibliographyModal extends BibliographyModal {
                 }
             }
             
+            const organizedFrontmatter = organizeFrontmatter(
+                finalFrontmatterOutput,
+                this.settings.frontmatterFieldOrder
+            );
+
             // Convert frontmatter to YAML string
-            const newFrontmatterString = stringifyYaml(finalFrontmatterOutput);
+            const newFrontmatterString = stringifyYaml(organizedFrontmatter);
             
             // Determine note body
             let newBody: string;
@@ -475,7 +481,7 @@ export class EditBibliographyModal extends BibliographyModal {
                 // Regenerate body from template
                 const templateVariableBuilder = new TemplateVariableBuilderService();
                 const templateVariables = templateVariableBuilder.buildVariables(
-                    finalFrontmatterOutput,
+                    organizedFrontmatter as Citation,
                     updatedModalData.contributors,
                     updatedModalData.attachmentData.map(a => a.path).filter((p): p is string => p !== undefined),
                     updatedModalData.relatedNotePaths
@@ -500,7 +506,7 @@ export class EditBibliographyModal extends BibliographyModal {
             
             // Handle file renaming if citekey changed
             if (newCitekey !== currentCitekey && this.settings.editRenameFileOnCitekeyChange) {
-                const newFileName = await this.generateFileName(finalFrontmatterOutput);
+                const newFileName = await this.generateFileName(organizedFrontmatter);
                 const newPath = this.fileToEdit.parent?.path 
                     ? `${this.fileToEdit.parent.path}/${newFileName}.md`
                     : `${newFileName}.md`;

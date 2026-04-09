@@ -6,6 +6,7 @@ import { TemplateVariableBuilderService } from './template-variable-builder-serv
 import { processYamlArray } from '../utils/yaml-utils';
 import { DateParser } from '../utils/date-parser';
 import { NameParser } from '../utils/name-parser';
+import { organizeFrontmatter } from '../utils/frontmatter-organization';
 
 /**
  * Input for building a YAML frontmatter
@@ -94,8 +95,13 @@ export class FrontmatterBuilderService {
         relatedNotePaths
       );
       
+      const organizedFrontmatter = organizeFrontmatter(
+        frontmatter,
+        pluginSettings.frontmatterFieldOrder
+      );
+
       // Generate formatted YAML
-      return stringifyYaml(frontmatter);
+      return stringifyYaml(organizedFrontmatter);
     } catch (error) {
       console.error('Error creating frontmatter:', error);
       throw error;

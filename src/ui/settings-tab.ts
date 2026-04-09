@@ -5,7 +5,11 @@ import { renderGeneralSettings } from './settings/general-settings-section';
 import { renderFilePathSettings } from './settings/file-organization-section';
 import { renderTemplatesSection } from './settings/templates-section';
 import { renderCitekeyGenerationSection } from './settings/citekey-section';
-import { renderCustomFrontmatterFieldsSection, renderFavoriteLanguagesSection } from './settings/custom-fields-section';
+import {
+	renderFrontmatterOrganizationSection,
+	renderCustomFrontmatterFieldsSection,
+	renderFavoriteLanguagesSection
+} from './settings/custom-fields-section';
 import { renderDefaultModalFieldsSection, renderEditModalSettingsSection } from './settings/modal-config-section';
 import { renderZoteroConnectorSection } from './settings/zotero-section';
 import { renderBibliographyBuilderSection } from './settings/bibliography-export-section';
@@ -94,6 +98,7 @@ export class BibliographySettingTab extends PluginSettingTab {
 				renderCitekeyGenerationSection(containerEl, this.plugin, this.helpers, refreshDisplay);
 				break;
 			case 'fields':
+				renderFrontmatterOrganizationSection(containerEl, this.plugin, refreshDisplay);
 				renderCustomFrontmatterFieldsSection(containerEl, this.plugin);
 				renderFavoriteLanguagesSection(containerEl, this.plugin, refreshDisplay);
 				break;
