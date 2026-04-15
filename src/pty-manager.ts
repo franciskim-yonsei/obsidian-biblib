@@ -1,37 +1,20 @@
 import { Platform } from "obsidian";
-import { getShellIntegration } from "./shell-integration";
 
 export type WindowsTerminalBackend = "conpty" | "winpty";
 
-interface IPtyProcess {
-  pid: number;
-  write(data: string): void;
-  resize(cols: number, rows: number): void;
-  onData(callback: (data: string) => void): void;
-  onExit(callback: (exitInfo: { exitCode: number; signal?: number }) => void): void;
-  kill(): void;
-}
-
-interface NodePtyModule {
-  spawn(
-    file: string,
-    args: string[],
-    options: {
-      name?: string;
-      cols?: number;
-      rows?: number;
-      cwd?: string;
-      env?: Record<string, string | undefined>;
-      useConpty?: boolean;
-    }
-  ): IPtyProcess;
+function getElectronRequire(): any {
+  const electronRequire = (window as any).require;
+  if (!electronRequire) {
+    throw new Error("Cannot access Electron require — this plugin only works on desktop.");
+  }
+  return electronRequire;
 }
 
 function getWindowsBuildNumber(): number | undefined {
   if (!Platform.isWin) return undefined;
 
   try {
-    const os = window.require("os") as typeof import("os");
+    const os = getElectronRequire()("os");
     const rawBuild = os.release().split(".").pop();
     const buildNumber = rawBuild ? Number.parseInt(rawBuild, 10) : Number.NaN;
     return Number.isFinite(buildNumber) ? buildNumber : undefined;
@@ -47,14 +30,15 @@ export function getPreferredWindowsBackend(): WindowsTerminalBackend | undefined
 }
 
 // node-pty is loaded at runtime via Electron's require, not bundled by esbuild.
-function loadNodePty(pluginDir: string): NodePtyModule {
-  const path = window.require("path") as typeof import("path");
+function loadNodePty(pluginDir: string): any {
+  const electronRequire = getElectronRequire();
+  const path = electronRequire("path");
   const explicitPath = path.join(pluginDir, "node_modules", "node-pty");
 
   try {
-    return window.require(explicitPath) as NodePtyModule;
+    return electronRequire(explicitPath);
   } catch {
-    return window.require("node-pty") as NodePtyModule;
+    return electronRequire("node-pty");
   }
 }
 
@@ -62,7 +46,7 @@ function getDefaultShell(): string {
   if (Platform.isWin) {
     const pwsh = process.env.ProgramFiles + "\\PowerShell\\7\\pwsh.exe";
     try {
-      const fs = window.require("fs") as typeof import("fs");
+      const fs = getElectronRequire()("fs");
       if (fs.existsSync(pwsh)) return pwsh;
     } catch {
       // ignore
@@ -80,8 +64,8 @@ function getShellArgs(shellPath: string): string[] {
     }
     return [];
   }
-  // macOS/Linux: launch as login shell so ~/.zprofile, ~/.bash_profile etc.
-  // are sourced and PATH includes Homebrew, nvm, user-installed CLIs.
+
+  // macOS/Linux: launch as a login shell so user PATH and shell startup files load.
   return ["-l"];
 }
 
@@ -90,14 +74,14 @@ function getShellArgs(shellPath: string): string[] {
  * Throws if the path does not exist or is not a file.
  */
 function validateShellPath(shellPath: string): void {
-  const fs = window.require("fs") as typeof import("fs");
+  const fs = getElectronRequire()("fs");
   try {
     const stat = fs.statSync(shellPath);
     if (!stat.isFile()) {
       throw new Error(`Shell path is not a file: ${shellPath}`);
     }
   } catch (err: unknown) {
-    if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
+    if (typeof err === "object" && err !== null && "code" in err && err.code === "ENOENT") {
       throw new Error(`Shell not found: ${shellPath}`);
     }
     throw err;
@@ -105,9 +89,8 @@ function validateShellPath(shellPath: string): void {
 }
 
 export class PtyManager {
-  private ptyProcess: IPtyProcess | null = null;
-  private nodePty: NodePtyModule | null = null;
-  private pluginDir: string;
+  private ptyProcess: any = null;
+  private readonly pluginDir: string;
 
   constructor(pluginDir: string) {
     this.pluginDir = pluginDir;
@@ -120,26 +103,21 @@ export class PtyManager {
     rows: number,
     env?: Record<string, string>
   ): WindowsTerminalBackend | undefined {
-    this.nodePty = loadNodePty(this.pluginDir);
+    const nodePty = loadNodePty(this.pluginDir);
 
-    const shell = shellPath || getDefaultShell();
+    const shell = shellPath.trim() || getDefaultShell();
     validateShellPath(shell);
-    const baseArgs = getShellArgs(shell);
-
-    // Inject shell integration hooks
-    const si = getShellIntegration(shell, this.pluginDir);
-    const args = si.args.length > 0 ? si.args : baseArgs;
+    const args = getShellArgs(shell);
 
     const ptyEnv = {
       ...process.env,
       ...(process.env.COLORTERM ? {} : { COLORTERM: "truecolor" }),
       ...(process.env.TERM_PROGRAM ? {} : { TERM_PROGRAM: "Obsidian" }),
-      ...si.env,
       ...env,
     };
 
     const spawnWithOptions = (useConpty?: boolean): void => {
-      this.ptyProcess = this.nodePty!.spawn(shell, args, {
+      this.ptyProcess = nodePty.spawn(shell, args, {
         name: "xterm-256color",
         cols,
         rows,
