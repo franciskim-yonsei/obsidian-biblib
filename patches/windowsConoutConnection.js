@@ -1,8 +1,8 @@
 "use strict";
 /**
  * Patched ConoutConnection that uses inline socket piping instead of Worker threads.
- * Worker threads are not supported in Obsidian's Electron renderer process.
- * Since we force winpty (useConpty: false), there is no deadlock risk with inline piping.
+ * Obsidian's Electron renderer process cannot host node-pty's Worker-based helper,
+ * so this patch performs the same pipe bridging inline.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ConoutConnection = void 0;

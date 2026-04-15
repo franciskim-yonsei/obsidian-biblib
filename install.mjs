@@ -5,7 +5,7 @@
  * Default vault: D:\LOS Test
  */
 
-import { cpSync, mkdirSync, existsSync } from "fs";
+import { cpSync, mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { resolve, join } from "path";
 
 const vaultPath = process.argv[2] || "D:\\LOS Test";
@@ -17,11 +17,10 @@ if (!existsSync(join(vaultPath, ".obsidian"))) {
 }
 
 const srcDir = resolve(import.meta.dirname);
+const pluginManifest = JSON.parse(readFileSync(join(srcDir, "manifest.json"), "utf-8"));
 
-// Create plugin directory
 mkdirSync(pluginDir, { recursive: true });
 
-// Copy essential files
 const files = ["main.js", "manifest.json", "styles.css"];
 for (const file of files) {
   const src = join(srcDir, file);
@@ -33,51 +32,77 @@ for (const file of files) {
   console.log(`  Copied ${file}`);
 }
 
-// Copy node-pty (native module needed at runtime)
+// Copy node-pty (native module needed at runtime).
 const nodePtySrc = join(srcDir, "node_modules", "node-pty");
 const nodePtyDest = join(pluginDir, "node_modules", "node-pty");
+const binaryManifestDest = join(nodePtyDest, ".binary-manifest.json");
 
-if (existsSync(nodePtySrc)) {
-  // Copy lib first, then apply patch immediately (before prebuilds which may be locked)
-  mkdirSync(join(nodePtyDest, "lib"), { recursive: true });
-  cpSync(join(nodePtySrc, "lib"), join(nodePtyDest, "lib"), { recursive: true });
-
-  // Apply patch right away — if prebuilds copy fails below, the patch is still in place
-  const patchSrc = join(srcDir, "patches", "windowsConoutConnection.js");
-  if (existsSync(patchSrc)) {
-    cpSync(patchSrc, join(nodePtyDest, "lib", "windowsConoutConnection.js"));
-    console.log("  Applied ConoutConnection patch (no Worker threads)");
-  }
-
-  // Prebuilds, package.json, third_party — may be locked if Obsidian has terminal open
-  let binaryWarning = false;
-  try {
-    cpSync(join(nodePtySrc, "prebuilds"), join(nodePtyDest, "prebuilds"), { recursive: true });
-  } catch {
-    binaryWarning = true;
-  }
-  try {
-    cpSync(join(nodePtySrc, "package.json"), join(nodePtyDest, "package.json"));
-  } catch {
-    binaryWarning = true;
-  }
-  const thirdParty = join(nodePtySrc, "third_party");
-  if (existsSync(thirdParty)) {
-    try {
-      cpSync(thirdParty, join(nodePtyDest, "third_party"), { recursive: true });
-    } catch {
-      binaryWarning = true;
-    }
-  }
-
-  if (binaryWarning) {
-    console.log("  Copied node-pty lib + patch (binaries locked by Obsidian — existing binaries unchanged)");
-  } else {
-    console.log("  Copied node-pty (prebuilt N-API binaries)");
-  }
-} else {
+if (!existsSync(nodePtySrc)) {
   console.error("Error: node_modules/node-pty not found. Run 'npm install' first.");
   process.exit(1);
+}
+
+mkdirSync(join(nodePtyDest, "lib"), { recursive: true });
+cpSync(join(nodePtySrc, "lib"), join(nodePtyDest, "lib"), { recursive: true });
+
+const patchSrc = join(srcDir, "patches", "windowsConoutConnection.js");
+if (existsSync(patchSrc)) {
+  cpSync(patchSrc, join(nodePtyDest, "lib", "windowsConoutConnection.js"));
+  console.log("  Applied ConoutConnection patch (no Worker threads)");
+}
+
+let binaryWarning = false;
+try {
+  cpSync(join(nodePtySrc, "prebuilds"), join(nodePtyDest, "prebuilds"), { recursive: true });
+} catch {
+  binaryWarning = true;
+}
+
+const buildRelease = join(nodePtySrc, "build", "Release");
+if (existsSync(buildRelease)) {
+  try {
+    cpSync(buildRelease, join(nodePtyDest, "build", "Release"), { recursive: true });
+  } catch {
+    binaryWarning = true;
+  }
+}
+
+try {
+  cpSync(join(nodePtySrc, "package.json"), join(nodePtyDest, "package.json"));
+} catch {
+  binaryWarning = true;
+}
+
+const thirdParty = join(nodePtySrc, "third_party");
+if (existsSync(thirdParty)) {
+  try {
+    cpSync(thirdParty, join(nodePtyDest, "third_party"), { recursive: true });
+  } catch {
+    binaryWarning = true;
+  }
+}
+
+if (!binaryWarning) {
+  writeFileSync(
+    binaryManifestDest,
+    JSON.stringify(
+      {
+        version: pluginManifest.version,
+        platform: process.platform,
+        arch: process.arch,
+        installedAt: new Date().toISOString(),
+      },
+      null,
+      2
+    ),
+    "utf-8"
+  );
+}
+
+if (binaryWarning) {
+  console.log("  Copied node-pty lib + patch (binaries locked by Obsidian — existing binaries unchanged)");
+} else {
+  console.log("  Copied node-pty (prebuilt N-API binaries)");
 }
 
 console.log(`\nPlugin installed to: ${pluginDir}`);

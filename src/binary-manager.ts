@@ -12,68 +12,12 @@ interface BinaryManifest {
 const REPO_OWNER = "sdkasper";
 const REPO_NAME = "lean-obsidian-terminal";
 
-// Patched ConoutConnection for Windows — replaces Worker-based implementation
-// with inline socket piping (Worker threads unavailable in Obsidian's renderer).
-const WINDOWS_CONOUT_PATCH = `"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ConoutConnection = void 0;
-var net = require("net");
-var conout_1 = require("./shared/conout");
-var ConoutConnection = (function () {
-    function ConoutConnection(_conoutPipeName, _useConptyDll) {
-        var _this = this;
-        this._conoutPipeName = _conoutPipeName;
-        this._useConptyDll = _useConptyDll;
-        this._isDisposed = false;
-        this._readyCallbacks = [];
-        this._isReady = false;
-        this._conoutSocket = null;
-        this._server = null;
-        this._drainTimeout = null;
-        this._conoutSocket = new net.Socket();
-        this._conoutSocket.setEncoding('utf8');
-        this._conoutSocket.connect(_conoutPipeName, function () {
-            _this._server = net.createServer(function (workerSocket) {
-                _this._conoutSocket.pipe(workerSocket);
-            });
-            _this._server.listen(conout_1.getWorkerPipeName(_conoutPipeName));
-            _this._isReady = true;
-            _this._readyCallbacks.forEach(function (cb) { cb(); });
-            _this._readyCallbacks = [];
-        });
-        this._conoutSocket.on('error', function () {});
-    }
-    ConoutConnection.prototype.onReady = function (listener) {
-        if (this._isReady) { listener(); } else { this._readyCallbacks.push(listener); }
-        return { dispose: function () {} };
-    };
-    ConoutConnection.prototype.connectSocket = function (socket) {
-        socket.connect(conout_1.getWorkerPipeName(this._conoutPipeName));
-    };
-    ConoutConnection.prototype.dispose = function () {
-        var _this = this;
-        if (!this._useConptyDll && this._isDisposed) { return; }
-        this._isDisposed = true;
-        if (this._drainTimeout) { clearTimeout(this._drainTimeout); }
-        this._drainTimeout = setTimeout(function () {
-            try {
-                if (_this._server) _this._server.close();
-                if (_this._conoutSocket) _this._conoutSocket.destroy();
-            } catch (e) {}
-        }, 1000);
-    };
-    return ConoutConnection;
-}());
-exports.ConoutConnection = ConoutConnection;
-`;
-
 export class BinaryManager {
   private status: BinaryStatus = "not-installed";
   private statusMessage = "";
-  private pluginDir: string;
-  private nodePtyDir: string;
-  private manifestPath: string;
-  private callbacks: Set<(status: BinaryStatus) => void> = new Set();
+  private readonly expectedVersion: string;
+  private readonly nodePtyDir: string;
+  private readonly manifestPath: string;
 
   private readonly fs: typeof import("fs");
   private readonly path: typeof import("path");
@@ -81,13 +25,15 @@ export class BinaryManager {
   private readonly childProcess: typeof import("child_process");
   private readonly crypto: typeof import("crypto");
 
-  constructor(pluginDir: string) {
-    this.pluginDir = pluginDir;
-    this.fs = window.require("fs") as typeof import("fs");
-    this.path = window.require("path") as typeof import("path");
-    this.os = window.require("os") as typeof import("os");
-    this.childProcess = window.require("child_process") as typeof import("child_process");
-    this.crypto = window.require("crypto") as typeof import("crypto");
+  constructor(pluginDir: string, expectedVersion: string) {
+    this.expectedVersion = expectedVersion.replace(/^v/, "");
+
+    const electronRequire = (window as any).require;
+    this.fs = electronRequire("fs");
+    this.path = electronRequire("path");
+    this.os = electronRequire("os");
+    this.childProcess = electronRequire("child_process");
+    this.crypto = electronRequire("crypto");
 
     this.nodePtyDir = this.path.join(pluginDir, "node_modules", "node-pty");
     this.manifestPath = this.path.join(this.nodePtyDir, ".binary-manifest.json");
@@ -100,14 +46,14 @@ export class BinaryManager {
       const platform = process.platform;
       const arch = process.arch;
 
-      // Check core JS entry point
+      // Check core JS entry point.
       const indexPath = this.path.join(this.nodePtyDir, "lib", "index.js");
       if (!this.fs.existsSync(indexPath)) {
         this.setStatus("not-installed");
         return false;
       }
 
-      // Check for native binary — prebuilds (win32/darwin) or build/Release (linux)
+      // Check for native binary — prebuilds (win32/darwin) or build/Release (linux).
       const prebuildDir = this.path.join(this.nodePtyDir, "prebuilds", `${platform}-${arch}`);
       const buildReleaseDir = this.path.join(this.nodePtyDir, "build", "Release");
       const hasPrebuild = this.fs.existsSync(this.path.join(prebuildDir, "pty.node"));
@@ -118,7 +64,7 @@ export class BinaryManager {
         return false;
       }
 
-      // Platform-specific checks
+      // Platform-specific checks.
       if (platform === "win32" && hasPrebuild) {
         const winpty = this.path.join(prebuildDir, "winpty.dll");
         if (!this.fs.existsSync(winpty)) {
@@ -133,15 +79,26 @@ export class BinaryManager {
         }
       }
 
-      // Check manifest matches current platform
+      // Check manifest matches the current plugin release.
       if (this.fs.existsSync(this.manifestPath)) {
-        const manifest: BinaryManifest = JSON.parse(
-          this.fs.readFileSync(this.manifestPath, "utf-8")
-        );
-        if (manifest.platform !== platform || manifest.arch !== arch) {
+        const manifest = this.readManifest();
+        if (
+          manifest.platform !== platform ||
+          manifest.arch !== arch ||
+          manifest.version !== this.expectedVersion
+        ) {
           this.setStatus("not-installed");
           return false;
         }
+      } else {
+        // Legacy installs predate the manifest. Migrate them in place so future
+        // checks are version-aware without breaking existing local installs.
+        this.writeManifest({
+          version: this.expectedVersion,
+          platform,
+          arch,
+          installedAt: new Date().toISOString(),
+        });
       }
 
       this.setStatus("ready");
@@ -152,35 +109,28 @@ export class BinaryManager {
     }
   }
 
-  async download(version?: string): Promise<void> {
-    this.setStatus("downloading", "Fetching release info...");
+  async download(version = this.expectedVersion): Promise<void> {
+    const normalizedVersion = version.replace(/^v/, "");
+    this.setStatus("downloading", `Preparing download for v${normalizedVersion}...`);
 
     try {
-      // Get latest release version if not specified
-      if (!version) {
-        const releaseUrl = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`;
-        const releaseResp = await requestUrl({ url: releaseUrl });
-        version = releaseResp.json.tag_name.replace(/^v/, "");
-      }
-
       const platform = process.platform;
       const arch = process.arch;
       const assetName = `node-pty-${platform}-${arch}.zip`;
-      const tag = version;
-      const baseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${tag}`;
+      const baseUrl = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${normalizedVersion}`;
 
-      // Download checksums
+      // Download checksums.
       this.setStatus("downloading", "Downloading checksums...");
       let checksums: Record<string, string> = {};
       try {
         const checksumResp = await requestUrl({ url: `${baseUrl}/checksums.json` });
         checksums = checksumResp.json;
       } catch {
-        // Checksums optional — warn but continue
+        // Checksums are optional — warn but continue.
         console.warn("Terminal: checksums.json not found, skipping verification");
       }
 
-      // Download binary zip
+      // Download binary zip.
       this.setStatus("downloading", `Downloading ${assetName}...`);
       const zipResp = await requestUrl({
         url: `${baseUrl}/${assetName}`,
@@ -188,7 +138,7 @@ export class BinaryManager {
       });
       const zipBuffer = Buffer.from(zipResp.arrayBuffer);
 
-      // Verify checksum if available
+      // Verify checksum if available.
       if (checksums[assetName]) {
         const hash = this.crypto
           .createHash("sha256")
@@ -201,19 +151,18 @@ export class BinaryManager {
         }
       }
 
-      // Write zip to temp file
+      // Write zip to temp file.
       this.setStatus("downloading", "Extracting...");
-      const tmpDir = this.os.tmpdir();
-      const tmpZip = this.path.join(tmpDir, assetName);
+      const tmpZip = this.path.join(this.os.tmpdir(), assetName);
       this.fs.writeFileSync(tmpZip, zipBuffer);
 
-      // Clean existing node-pty dir
+      // Clean existing node-pty dir.
       if (this.fs.existsSync(this.nodePtyDir)) {
         this.fs.rmSync(this.nodePtyDir, { recursive: true, force: true });
       }
       this.fs.mkdirSync(this.nodePtyDir, { recursive: true });
 
-      // Extract zip using platform-native tools
+      // Extract zip using platform-native tools.
       if (platform === "win32") {
         this.childProcess.execSync(
           `powershell -NoProfile -Command "Expand-Archive -Path '${tmpZip}' -DestinationPath '${this.nodePtyDir}' -Force"`,
@@ -224,39 +173,34 @@ export class BinaryManager {
           `unzip -o "${tmpZip}" -d "${this.nodePtyDir}"`,
           { timeout: 30000 }
         );
-        // Ensure spawn-helper is executable
+
+        // Ensure spawn-helper is executable.
         const spawnHelper = this.path.join(
-          this.nodePtyDir, "prebuilds", `${platform}-${arch}`, "spawn-helper"
+          this.nodePtyDir,
+          "prebuilds",
+          `${platform}-${arch}`,
+          "spawn-helper"
         );
         if (this.fs.existsSync(spawnHelper)) {
           this.fs.chmodSync(spawnHelper, 0o755);
         }
       }
 
-      // Clean up temp file
       try {
         this.fs.unlinkSync(tmpZip);
       } catch {
         // ignore
       }
 
-      // Apply Windows patch
-      if (platform === "win32") {
-        const patchDest = this.path.join(this.nodePtyDir, "lib", "windowsConoutConnection.js");
-        this.fs.writeFileSync(patchDest, WINDOWS_CONOUT_PATCH, "utf-8");
-      }
-
-      // Write binary manifest
-      const manifest: BinaryManifest = {
-        version: version!,
+      this.writeManifest({
+        version: normalizedVersion,
         platform,
         arch,
         installedAt: new Date().toISOString(),
-      };
-      this.fs.writeFileSync(this.manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+      });
 
       this.setStatus("ready");
-    } catch (err: unknown) {
+    } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Terminal: binary download failed", err);
       this.setStatus("error", message);
@@ -270,7 +214,7 @@ export class BinaryManager {
         this.fs.rmSync(this.nodePtyDir, { recursive: true, force: true });
       }
       this.setStatus("not-installed");
-    } catch (err: unknown) {
+    } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.setStatus("error", message);
       throw err;
@@ -280,10 +224,7 @@ export class BinaryManager {
   getVersion(): string | null {
     try {
       if (this.fs.existsSync(this.manifestPath)) {
-        const manifest: BinaryManifest = JSON.parse(
-          this.fs.readFileSync(this.manifestPath, "utf-8")
-        );
-        return manifest.version;
+        return this.readManifest().version;
       }
     } catch {
       // ignore
@@ -307,16 +248,16 @@ export class BinaryManager {
     return this.statusMessage;
   }
 
-  onStatusChange(cb: (status: BinaryStatus) => void): () => void {
-    this.callbacks.add(cb);
-    return () => this.callbacks.delete(cb);
+  private readManifest(): BinaryManifest {
+    return JSON.parse(this.fs.readFileSync(this.manifestPath, "utf-8"));
+  }
+
+  private writeManifest(manifest: BinaryManifest): void {
+    this.fs.writeFileSync(this.manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
   }
 
   private setStatus(status: BinaryStatus, message = ""): void {
     this.status = status;
     this.statusMessage = message;
-    for (const cb of this.callbacks) {
-      cb(status);
-    }
   }
 }
