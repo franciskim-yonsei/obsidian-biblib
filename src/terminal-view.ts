@@ -38,6 +38,9 @@ export class TerminalView extends ItemView {
     // Terminal host (all session containers go here)
     const terminalHostEl = container.createDiv({ cls: "terminal-host" });
 
+    // Bottom info bar — keeps last terminal line above the Obsidian status bar
+    const bottomBarEl = container.createDiv({ cls: "terminal-bottom-bar" });
+
     // Determine CWD — vault root
     let cwd: string;
     try {
@@ -57,6 +60,7 @@ export class TerminalView extends ItemView {
     this.tabManager = new TerminalTabManager(
       tabBarEl,
       terminalHostEl,
+      bottomBarEl,
       this.plugin.settings,
       cwd,
       pluginDir,

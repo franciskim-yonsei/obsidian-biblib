@@ -137,6 +137,7 @@ export class TerminalTabManager {
   private activeId: string | null = null;
   private tabBarEl: HTMLElement;
   private terminalHostEl: HTMLElement;
+  private bottomBarEl: HTMLElement;
   private settings: TerminalPluginSettings;
   private cwd: string;
   private pluginDir: string;
@@ -147,6 +148,7 @@ export class TerminalTabManager {
   constructor(
     tabBarEl: HTMLElement,
     terminalHostEl: HTMLElement,
+    bottomBarEl: HTMLElement,
     settings: TerminalPluginSettings,
     cwd: string,
     pluginDir: string,
@@ -156,12 +158,14 @@ export class TerminalTabManager {
   ) {
     this.tabBarEl = tabBarEl;
     this.terminalHostEl = terminalHostEl;
+    this.bottomBarEl = bottomBarEl;
     this.settings = settings;
     this.cwd = cwd;
     this.pluginDir = pluginDir;
     this.binaryManager = binaryManager;
     this.onActiveChange = onActiveChange;
     this.onTabsEmpty = onTabsEmpty;
+    this.renderBottomBar();
   }
 
   createTab(): TerminalSession {
@@ -194,12 +198,12 @@ export class TerminalTabManager {
     terminal.loadAddon(webLinksAddon);
     terminal.open(containerEl);
 
-    // Intercept clipboard shortcuts — Obsidian captures them before xterm.js
+    // Intercept clipboard shortcuts — Obsidian captures them before xterm.js.
     terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
       if (e.type !== "keydown") return true;
       const mod = e.metaKey || e.ctrlKey;
 
-      // Shift+Enter: send newline without submitting
+      // Shift+Enter: send newline without submitting.
       if (e.shiftKey && e.key === "Enter") {
         e.preventDefault();
         const s = this.sessions.find((s) => s.id === id);
@@ -207,7 +211,7 @@ export class TerminalTabManager {
         return false;
       }
 
-      // Paste: Ctrl+V / Cmd+V / Shift+Insert
+      // Paste: Ctrl+V / Cmd+V / Shift+Insert.
       if ((mod && e.key === "v") || (e.shiftKey && e.key === "Insert")) {
         e.preventDefault();
         navigator.clipboard.readText().then((text) => {
@@ -219,9 +223,16 @@ export class TerminalTabManager {
         return false;
       }
 
-      // Copy: Ctrl+C / Cmd+C when there is a selection (otherwise send SIGINT)
+      // Copy: Ctrl+C / Cmd+C when there is a selection (otherwise send SIGINT).
+      // Trim trailing whitespace from each line: xterm pads every row to the
+      // full column width with spaces, which makes multi-line pastes ugly.
       if (mod && e.key === "c" && terminal.hasSelection()) {
-        navigator.clipboard.writeText(terminal.getSelection()).catch(() => {});
+        const text = terminal
+          .getSelection()
+          .split("\n")
+          .map((line) => line.trimEnd())
+          .join("\n");
+        navigator.clipboard.writeText(text).catch(() => { /* clipboard unavailable */ });
         terminal.clearSelection();
         return false;
       }
@@ -236,6 +247,7 @@ export class TerminalTabManager {
     this.sessions.push(session);
     this.switchTab(id);
     this.renderTabBar();
+    this.renderBottomBar();
 
     // Defer PTY spawn until DOM is laid out so fitAddon gets correct dimensions
     setTimeout(() => {
@@ -335,6 +347,7 @@ export class TerminalTabManager {
     }
 
     this.renderTabBar();
+    this.renderBottomBar();
   }
 
   fitActive(): void {
@@ -372,6 +385,25 @@ export class TerminalTabManager {
     const status = exitCode === 0 ? "done" : `exit ${exitCode}`;
     playNotificationSound(this.settings.notificationSound, this.settings.notificationVolume);
     new Notice(`${session.name}: ${status}`);
+  }
+
+  private renderBottomBar(): void {
+    this.bottomBarEl.empty();
+
+    const hasSession = this.sessions.length > 0;
+    const dot = this.bottomBarEl.createDiv({ cls: "terminal-bottom-indicator" });
+    if (!hasSession) dot.classList.add("inactive");
+
+    this.bottomBarEl.createSpan({ text: this.getShellDisplayName() });
+  }
+
+  private getShellDisplayName(): string {
+    const path = this.settings.shellPath.trim();
+    if (!path) {
+      return Platform.isWin ? "pwsh" : "shell";
+    }
+    const base = path.replace(/\\/g, "/").split("/").pop() ?? path;
+    return base.replace(/\.exe$/i, "");
   }
 
   private renameTab(id: string, labelEl: HTMLElement): void {

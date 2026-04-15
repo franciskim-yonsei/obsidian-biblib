@@ -341,10 +341,13 @@
   position: relative;
 }
 
-/* Session fills host */
+/* Session fills host, with a small left gap so text doesn't abut the divider */
 .terminal-session {
   position: absolute;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 4px;
 }
 
 .terminal-session-hidden {
@@ -354,6 +357,33 @@
 /* Constrain xterm to container */
 .terminal-session .xterm {
   height: 100%;
+}
+
+/* Bottom info bar — sits above the Obsidian status bar to prevent overlap */
+.terminal-bottom-bar {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  background: var(--background-secondary);
+  border-top: 1px solid var(--background-modifier-border);
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  gap: 6px;
+  user-select: none;
+}
+
+.terminal-bottom-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-green, #4ec955);
+  flex-shrink: 0;
+}
+
+.terminal-bottom-indicator.inactive {
+  background: var(--text-faint, #555);
 }
 
 /* Scrollbar styling */
