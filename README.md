@@ -10,6 +10,7 @@ An embedded terminal panel for [Obsidian](https://obsidian.md), powered by [xter
 - Multiple terminal tabs with rename and color-coding support
 - Auto-detects your shell: PowerShell 7 / Windows PowerShell / cmd.exe on Windows, `$SHELL` on macOS/Linux
 - Four built-in color themes: Obsidian Dark, Obsidian Light, Monokai, Solarized Dark
+- Customizable ribbon and panel tab icon (any Lucide icon name)
 - Clickable URLs in terminal output
 - Auto-resize on panel resize
 - Opens at vault root by default
@@ -56,6 +57,7 @@ An embedded terminal panel for [Obsidian](https://obsidian.md), powered by [xter
 | Font size | 14 | Terminal font size in pixels |
 | Font family | Menlo, Monaco, 'Courier New', monospace | Terminal font stack |
 | Theme | Obsidian Dark | Color theme for the terminal |
+| Icon | terminal | Lucide icon name for the ribbon and panel tab icon |
 | Cursor blink | On | Whether the cursor blinks |
 | Scrollback | 5000 | Number of lines kept in scroll history |
 | Background color | Theme default | Override the theme background with any CSS color (hex, RGB, etc.) |
