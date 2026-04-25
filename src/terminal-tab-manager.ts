@@ -1,4 +1,4 @@
-import { Notice, Platform } from "obsidian";
+import { Platform } from "obsidian";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -6,7 +6,6 @@ import { PtyManager, getPreferredWindowsBackend } from "./pty-manager";
 import type { WindowsTerminalBackend } from "./pty-manager";
 import { getTheme } from "./themes";
 import type { TerminalPluginSettings } from "./settings";
-import type { NotificationSound } from "./settings";
 import type { BinaryManager } from "./binary-manager";
 
 export const TAB_COLORS = [
@@ -25,90 +24,12 @@ export interface TerminalSession {
   terminal: Terminal;
   fitAddon: FitAddon;
   pty: PtyManager;
+  syncGate: SynchronizedOutputGate;
   containerEl: HTMLElement;
   color: string;
 }
 
 let sessionCounter = 0;
-
-/** Play a notification sound via the Web Audio API. */
-function playNotificationSound(sound: NotificationSound, volume: number): void {
-  try {
-    const ctx = new AudioContext();
-    const vol = Math.max(0, Math.min(volume, 100)) / 100;
-
-    switch (sound) {
-      case "chime": {
-        // Two-tone ascending: 660 Hz → 880 Hz
-        const g = ctx.createGain();
-        g.gain.value = vol;
-        g.connect(ctx.destination);
-        const o1 = ctx.createOscillator();
-        o1.type = "sine";
-        o1.frequency.value = 660;
-        o1.connect(g);
-        o1.start(ctx.currentTime);
-        o1.stop(ctx.currentTime + 0.12);
-        const o2 = ctx.createOscillator();
-        o2.type = "sine";
-        o2.frequency.value = 880;
-        o2.connect(g);
-        o2.start(ctx.currentTime + 0.12);
-        o2.stop(ctx.currentTime + 0.24);
-        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
-        setTimeout(() => void ctx.close(), 350);
-        break;
-      }
-      case "ping": {
-        // Short high triangle wave
-        const g = ctx.createGain();
-        g.gain.value = vol;
-        g.connect(ctx.destination);
-        const o = ctx.createOscillator();
-        o.type = "triangle";
-        o.frequency.value = 1200;
-        o.connect(g);
-        o.start();
-        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
-        o.stop(ctx.currentTime + 0.1);
-        setTimeout(() => void ctx.close(), 150);
-        break;
-      }
-      case "pop": {
-        // Short low sine
-        const g = ctx.createGain();
-        g.gain.value = vol;
-        g.connect(ctx.destination);
-        const o = ctx.createOscillator();
-        o.type = "sine";
-        o.frequency.value = 400;
-        o.connect(g);
-        o.start();
-        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
-        o.stop(ctx.currentTime + 0.08);
-        setTimeout(() => void ctx.close(), 130);
-        break;
-      }
-      default: {
-        // "beep" — original 880 Hz sine
-        const g = ctx.createGain();
-        g.gain.value = vol;
-        g.connect(ctx.destination);
-        const o = ctx.createOscillator();
-        o.type = "sine";
-        o.frequency.value = 880;
-        o.connect(g);
-        o.start();
-        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-        o.stop(ctx.currentTime + 0.15);
-        setTimeout(() => void ctx.close(), 200);
-        break;
-      }
-    }
-  } catch {
-    // Audio not available — silently ignore
-  }
-}
 
 function getWindowsPtyOptions(
   backend: WindowsTerminalBackend | undefined = getPreferredWindowsBackend()
@@ -129,6 +50,372 @@ function getWindowsPtyOptions(
       : { backend };
   } catch {
     return { backend };
+  }
+}
+
+const SYNCHRONIZED_OUTPUT_TIMEOUT_MS = 100;
+const CONTROL_SEQUENCE_SCAN_TAIL_LENGTH = 128;
+
+let syncGateCounter = 0;
+
+type SynchronizedOutputMarker = {
+  start: number;
+  end: number;
+  final: "h" | "l";
+};
+
+/**
+ * Implements DECSET 2026 synchronized output for xterm.js.
+ *
+ * Windows Terminal honors \x1b[?2026h / \x1b[?2026l by withholding paints
+ * until the synchronized block ends. xterm.js 5.5 does not currently implement
+ * that mode. This shim does two targeted things:
+ *
+ * 1. If a synchronized block is split across PTY chunks, buffer the block and
+ *    hand it to xterm as one write when the end marker arrives. This prevents
+ *    parser-side side effects like viewport scrolling from leaking between the
+ *    clear phase and the draw phase.
+ * 2. While xterm parses a completed synchronized block, suppress renderer row
+ *    refreshes and flush one coalesced refresh after the write callback fires.
+ */
+class SynchronizedOutputGate {
+  private readonly renderService: any | null;
+  private readonly debugId = ++syncGateCounter;
+  private readonly originalRefreshRows: ((start: number, end: number, isRedrawOnly?: boolean) => void) | null = null;
+  private readonly originalRenderRows: ((start: number, end: number) => void) | null = null;
+  private readonly originalHandleCursorMove: (() => void) | null = null;
+  private readonly originalClear: (() => void) | null = null;
+  private scanTail = "";
+  private buffering = false;
+  private bufferedData = "";
+  private paused = false;
+  private disposed = false;
+  private timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingSynchronizedWrites = 0;
+  private queuedStart: number | null = null;
+  private queuedEnd: number | null = null;
+  private needsCursorRefresh = false;
+  private needsClear = false;
+  private readonly stats = {
+    writes: 0,
+    chars: 0,
+    beginMarkers: 0,
+    endMarkers: 0,
+    bufferedBlocks: 0,
+    bufferedChars: 0,
+    flushedBlocks: 0,
+    bufferTimeouts: 0,
+    renderPauses: 0,
+    renderTimeouts: 0,
+    renderFlushes: 0,
+    queuedRefreshes: 0,
+    queuedCursorMoves: 0,
+    queuedClears: 0,
+    maxQueuedRows: 0,
+  };
+
+  constructor(private readonly terminal: Terminal) {
+    const core = (terminal as any)._core;
+    this.renderService = core?._renderService ?? null;
+
+    if (this.renderService) {
+      if (typeof this.renderService.refreshRows === "function") {
+        this.originalRefreshRows = this.renderService.refreshRows.bind(this.renderService);
+        this.renderService.refreshRows = (start: number, end: number, isRedrawOnly?: boolean) => {
+          if (this.paused) {
+            this.queueRows(start, end);
+            return;
+          }
+          this.originalRefreshRows?.(start, end, isRedrawOnly);
+        };
+      }
+
+      if (typeof this.renderService._renderRows === "function") {
+        this.originalRenderRows = this.renderService._renderRows.bind(this.renderService);
+        this.renderService._renderRows = (start: number, end: number) => {
+          if (this.paused) {
+            this.queueRows(start, end);
+            return;
+          }
+          this.originalRenderRows?.(start, end);
+        };
+      }
+
+      if (typeof this.renderService.handleCursorMove === "function") {
+        this.originalHandleCursorMove = this.renderService.handleCursorMove.bind(this.renderService);
+        this.renderService.handleCursorMove = () => {
+          if (this.paused) {
+            this.needsCursorRefresh = true;
+            this.stats.queuedCursorMoves++;
+            return;
+          }
+          this.originalHandleCursorMove?.();
+        };
+      }
+
+      if (typeof this.renderService.clear === "function") {
+        this.originalClear = this.renderService.clear.bind(this.renderService);
+        this.renderService.clear = () => {
+          if (this.paused) {
+            this.needsClear = true;
+            this.queueRows(0, Math.max(0, this.terminal.rows - 1));
+            this.stats.queuedClears++;
+            return;
+          }
+          this.originalClear?.();
+        };
+      }
+    }
+
+    this.registerDebugHandle();
+  }
+
+  write(data: string): void {
+    if (this.disposed) return;
+
+    this.stats.writes++;
+    this.stats.chars += data.length;
+
+    const markers = this.findSynchronizedOutputMarkers(data);
+    if (markers.length === 0) {
+      if (this.buffering) {
+        this.appendBufferedData(data);
+      } else {
+        this.writeThrough(data);
+      }
+      return;
+    }
+
+    let cursor = 0;
+    for (const marker of markers) {
+      if (marker.end < cursor) continue;
+
+      if (marker.final === "h") {
+        if (this.buffering) {
+          this.appendBufferedData(data.slice(cursor, marker.end));
+        } else {
+          this.writeThrough(data.slice(cursor, marker.start));
+          this.startBuffering();
+          this.appendBufferedData(data.slice(marker.start, marker.end));
+        }
+        cursor = marker.end;
+      } else {
+        if (this.buffering) {
+          this.appendBufferedData(data.slice(cursor, marker.end));
+          this.flushBufferedBlock(false);
+        } else {
+          // Unmatched end marker. Pass it through; xterm will ignore the
+          // unsupported private mode, matching its baseline behavior.
+          this.writeThrough(data.slice(cursor, marker.end));
+        }
+        cursor = marker.end;
+      }
+    }
+
+    const remaining = data.slice(cursor);
+    if (this.buffering) {
+      this.appendBufferedData(remaining);
+    } else {
+      this.writeThrough(remaining);
+    }
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.clearTimeoutTimer();
+    this.unregisterDebugHandle();
+    this.buffering = false;
+    this.bufferedData = "";
+    this.pendingSynchronizedWrites = 0;
+
+    if (this.renderService) {
+      if (this.originalRefreshRows) this.renderService.refreshRows = this.originalRefreshRows;
+      if (this.originalRenderRows) this.renderService._renderRows = this.originalRenderRows;
+      if (this.originalHandleCursorMove) this.renderService.handleCursorMove = this.originalHandleCursorMove;
+      if (this.originalClear) this.renderService.clear = this.originalClear;
+    }
+
+    if (this.paused) {
+      this.paused = false;
+      this.flushQueuedRefresh();
+    }
+  }
+
+  getDebugStats(): Record<string, number | boolean> {
+    return {
+      id: this.debugId,
+      buffering: this.buffering,
+      paused: this.paused,
+      pendingSynchronizedWrites: this.pendingSynchronizedWrites,
+      heldChars: this.bufferedData.length,
+      queuedStart: this.queuedStart ?? -1,
+      queuedEnd: this.queuedEnd ?? -1,
+      ...this.stats,
+    };
+  }
+
+  private findSynchronizedOutputMarkers(data: string): SynchronizedOutputMarker[] {
+    const previousTail = this.scanTail;
+    const scanData = previousTail + data;
+    const previousTailLength = previousTail.length;
+    const markers: SynchronizedOutputMarker[] = [];
+    const sequencePattern = /\x1b\[\?([0-9;]*)([hl])/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = sequencePattern.exec(scanData)) !== null) {
+      const matchEnd = match.index + match[0].length;
+      if (matchEnd <= previousTailLength) continue;
+      if (!match[1].split(";").includes("2026")) continue;
+
+      const final = match[2] as "h" | "l";
+      const start = Math.max(0, match.index - previousTailLength);
+      const end = Math.max(0, matchEnd - previousTailLength);
+      markers.push({ start, end, final });
+      if (final === "h") this.stats.beginMarkers++;
+      else this.stats.endMarkers++;
+    }
+
+    this.scanTail = scanData.slice(-CONTROL_SEQUENCE_SCAN_TAIL_LENGTH);
+    return markers;
+  }
+
+  private startBuffering(): void {
+    this.buffering = true;
+    this.stats.bufferedBlocks++;
+    this.resetBufferTimeout();
+  }
+
+  private appendBufferedData(data: string): void {
+    if (!data) return;
+    this.bufferedData += data;
+    this.stats.bufferedChars += data.length;
+    this.resetBufferTimeout();
+  }
+
+  private flushBufferedBlock(timedOut: boolean): void {
+    const data = this.bufferedData;
+    this.buffering = false;
+    this.bufferedData = "";
+    this.clearTimeoutTimer();
+
+    if (timedOut) {
+      this.stats.bufferTimeouts++;
+    }
+    if (!data) return;
+
+    this.stats.flushedBlocks++;
+    this.writeThrough(data, true);
+  }
+
+  private writeThrough(data: string, synchronizedBlock = false): void {
+    if (!data || this.disposed) return;
+
+    if (!synchronizedBlock) {
+      this.terminal.write(data);
+      return;
+    }
+
+    this.pendingSynchronizedWrites++;
+    this.beginRenderPause();
+    this.terminal.write(data, () => {
+      this.pendingSynchronizedWrites = Math.max(0, this.pendingSynchronizedWrites - 1);
+      if (this.pendingSynchronizedWrites === 0 && !this.buffering) {
+        this.endRenderPause();
+      }
+    });
+  }
+
+  private beginRenderPause(): void {
+    if (!this.renderService || this.disposed) return;
+
+    if (!this.paused) {
+      this.paused = true;
+      this.stats.renderPauses++;
+    }
+    this.clearTimeoutTimer();
+    this.timeoutTimer = setTimeout(() => {
+      this.stats.renderTimeouts++;
+      this.pendingSynchronizedWrites = 0;
+      this.endRenderPause();
+    }, SYNCHRONIZED_OUTPUT_TIMEOUT_MS);
+  }
+
+  private endRenderPause(): void {
+    if (this.disposed) return;
+
+    this.clearTimeoutTimer();
+    if (!this.paused) return;
+
+    this.flushQueuedRefresh();
+    this.paused = false;
+  }
+
+  private resetBufferTimeout(): void {
+    this.clearTimeoutTimer();
+    this.timeoutTimer = setTimeout(() => {
+      this.flushBufferedBlock(true);
+    }, SYNCHRONIZED_OUTPUT_TIMEOUT_MS);
+  }
+
+  private queueRows(start: number, end: number): void {
+    this.queuedStart = this.queuedStart === null ? start : Math.min(this.queuedStart, start);
+    this.queuedEnd = this.queuedEnd === null ? end : Math.max(this.queuedEnd, end);
+    this.stats.queuedRefreshes++;
+    if (this.queuedStart !== null && this.queuedEnd !== null) {
+      this.stats.maxQueuedRows = Math.max(this.stats.maxQueuedRows, this.queuedEnd - this.queuedStart + 1);
+    }
+  }
+
+  private flushQueuedRefresh(): void {
+    try {
+      const start = this.queuedStart ?? 0;
+      const end = this.queuedEnd ?? Math.max(0, this.terminal.rows - 1);
+      const needsClear = this.needsClear;
+      this.queuedStart = null;
+      this.queuedEnd = null;
+      this.needsClear = false;
+      this.stats.renderFlushes++;
+      if (needsClear) {
+        this.originalClear?.();
+      }
+      this.originalRefreshRows?.(start, end);
+      if (this.needsCursorRefresh) {
+        this.needsCursorRefresh = false;
+        this.originalHandleCursorMove?.();
+      }
+    } catch (err) {
+      console.warn("Terminal: failed to flush synchronized output refresh", err);
+    }
+  }
+
+  private clearTimeoutTimer(): void {
+    if (this.timeoutTimer !== null) {
+      clearTimeout(this.timeoutTimer);
+      this.timeoutTimer = null;
+    }
+  }
+
+  private registerDebugHandle(): void {
+    try {
+      const target = window as any;
+      const gates = target.leanTerminalSyncGates instanceof Map
+        ? target.leanTerminalSyncGates as Map<number, SynchronizedOutputGate>
+        : new Map<number, SynchronizedOutputGate>();
+      gates.set(this.debugId, this);
+      target.leanTerminalSyncGates = gates;
+      target.leanTerminalSyncStats = () => Array.from(gates.values()).map((gate) => gate.getDebugStats());
+    } catch {
+      // Debug handle is best-effort only.
+    }
+  }
+
+  private unregisterDebugHandle(): void {
+    try {
+      const gates = (window as any).leanTerminalSyncGates;
+      if (gates instanceof Map) gates.delete(this.debugId);
+    } catch {
+      // Debug handle is best-effort only.
+    }
   }
 }
 
@@ -241,8 +528,9 @@ export class TerminalTabManager {
     });
 
     const pty = new PtyManager(this.pluginDir);
+    const syncGate = new SynchronizedOutputGate(terminal);
     const session: TerminalSession = {
-      id, name, terminal, fitAddon, pty, containerEl, color: "",
+      id, name, terminal, fitAddon, pty, syncGate, containerEl, color: "",
     };
     this.sessions.push(session);
     this.switchTab(id);
@@ -278,9 +566,10 @@ export class TerminalTabManager {
         return;
       }
 
-      // Wire data: PTY -> xterm
+      // Wire data: PTY -> xterm. SynchronizedOutputGate implements DECSET
+      // 2026 paint suppression for TUIs that emit synchronized redraw blocks.
       pty.onData((data: string) => {
-        terminal.write(data);
+        syncGate.write(data);
       });
 
       // Wire data: xterm -> PTY
@@ -326,6 +615,7 @@ export class TerminalTabManager {
     if (idx === -1) return;
 
     const session = this.sessions[idx];
+    session.syncGate.dispose();
     session.pty.kill();
     session.terminal.dispose();
     session.containerEl.remove();
@@ -371,20 +661,13 @@ export class TerminalTabManager {
 
   destroyAll(): void {
     for (const session of this.sessions) {
+      session.syncGate.dispose();
       session.pty.kill();
       session.terminal.dispose();
       session.containerEl.remove();
     }
     this.sessions = [];
     this.activeId = null;
-  }
-
-  private notifyCompletion(session: TerminalSession, exitCode: number): void {
-    if (!this.settings.notifyOnCompletion) return;
-
-    const status = exitCode === 0 ? "done" : `exit ${exitCode}`;
-    playNotificationSound(this.settings.notificationSound, this.settings.notificationVolume);
-    new Notice(`${session.name}: ${status}`);
   }
 
   private renderBottomBar(): void {
