@@ -1,4 +1,4 @@
-import { App, Notice, PluginSettingTab, Setting, ColorComponent, setIcon } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting, ColorComponent, Platform, setIcon } from "obsidian";
 import type TerminalPlugin from "./main";
 import { THEME_NAMES } from "./themes";
 
@@ -10,6 +10,7 @@ export interface TerminalPluginSettings {
   backgroundColor: string;
   cursorBlink: boolean;
   scrollback: number;
+  conptyPassthrough: boolean;
   ribbonIcon: string;
   defaultLocation: "right" | "bottom";
 }
@@ -22,6 +23,7 @@ export const DEFAULT_SETTINGS: TerminalPluginSettings = {
   backgroundColor: "",
   cursorBlink: true,
   scrollback: 5000,
+  conptyPassthrough: true,
   ribbonIcon: "terminal",
   defaultLocation: "bottom",
 };
@@ -249,6 +251,22 @@ export class TerminalSettingTab extends PluginSettingTab {
             }
           })
       );
+
+    if (Platform.isWin) {
+      new Setting(containerEl)
+        .setName("ConPTY passthrough mode")
+        .setDesc(
+          "Experimental Windows 11 22H2+ mode that asks the bundled ConPTY DLL " +
+          "to pass child output through verbatim. Helps TUIs such as pi preserve " +
+          "synchronized-output markers. Requires newly downloaded terminal binaries."
+        )
+        .addToggle((toggle) =>
+          toggle.setValue(this.plugin.settings.conptyPassthrough).onChange(async (value) => {
+            this.plugin.settings.conptyPassthrough = value;
+            await this.plugin.saveSettings();
+          })
+        );
+    }
 
     new Setting(containerEl)
       .setName("Default location")

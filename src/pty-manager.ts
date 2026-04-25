@@ -2,6 +2,14 @@ import { Platform } from "obsidian";
 
 export type WindowsTerminalBackend = "conpty" | "winpty";
 
+export interface PtySpawnOptions {
+  /**
+   * On Windows 11 22H2+ with patched node-pty binaries, request
+   * PSEUDOCONSOLE_PASSTHROUGH_MODE via the bundled conpty.dll path.
+   */
+  conptyPassthrough?: boolean;
+}
+
 function getElectronRequire(): any {
   const electronRequire = (window as any).require;
   if (!electronRequire) {
@@ -27,6 +35,11 @@ export function getPreferredWindowsBackend(): WindowsTerminalBackend | undefined
   const buildNumber = getWindowsBuildNumber();
   if (buildNumber === undefined) return Platform.isWin ? "winpty" : undefined;
   return buildNumber >= 18309 ? "conpty" : "winpty";
+}
+
+export function supportsConptyPassthrough(): boolean {
+  const buildNumber = getWindowsBuildNumber();
+  return buildNumber !== undefined && buildNumber >= 22621;
 }
 
 // node-pty is loaded at runtime via Electron's require, not bundled by esbuild.
@@ -101,7 +114,8 @@ export class PtyManager {
     cwd: string,
     cols: number,
     rows: number,
-    env?: Record<string, string>
+    env?: Record<string, string>,
+    options: PtySpawnOptions = {}
   ): WindowsTerminalBackend | undefined {
     const nodePty = loadNodePty(this.pluginDir);
 
@@ -109,36 +123,87 @@ export class PtyManager {
     validateShellPath(shell);
     const args = getShellArgs(shell);
 
-    const ptyEnv = {
+    const passthroughRequested =
+      Platform.isWin && options.conptyPassthrough === true && supportsConptyPassthrough();
+
+    const basePtyEnv = {
       ...process.env,
       ...(process.env.COLORTERM ? {} : { COLORTERM: "truecolor" }),
       ...(process.env.TERM_PROGRAM ? {} : { TERM_PROGRAM: "Obsidian" }),
       ...env,
     };
 
-    const spawnWithOptions = (useConpty?: boolean): void => {
-      this.ptyProcess = nodePty.spawn(shell, args, {
-        name: "xterm-256color",
-        cols,
-        rows,
-        cwd,
-        env: ptyEnv,
-        ...(Platform.isWin ? { useConpty } : {}),
-      });
+    const spawnWithOptions = (
+      useConpty?: boolean,
+      useConptyDll = false,
+      requestPassthrough = false
+    ): void => {
+      const spawn = (): void => {
+        this.ptyProcess = nodePty.spawn(shell, args, {
+          name: "xterm-256color",
+          cols,
+          rows,
+          cwd,
+          env: requestPassthrough
+            ? { ...basePtyEnv, LEAN_TERMINAL_CONPTY_PASSTHROUGH: "1" }
+            : basePtyEnv,
+          ...(Platform.isWin ? { useConpty, ...(useConptyDll ? { useConptyDll: true } : {}) } : {}),
+        });
+      };
+
+      // The native ConPTY is created before node-pty passes env to the child,
+      // so the patched addon must see this flag in the current process env too.
+      if (Platform.isWin && useConptyDll && requestPassthrough) {
+        const previous = process.env.LEAN_TERMINAL_CONPTY_PASSTHROUGH;
+        process.env.LEAN_TERMINAL_CONPTY_PASSTHROUGH = "1";
+        try {
+          spawn();
+        } finally {
+          if (previous === undefined) {
+            delete process.env.LEAN_TERMINAL_CONPTY_PASSTHROUGH;
+          } else {
+            process.env.LEAN_TERMINAL_CONPTY_PASSTHROUGH = previous;
+          }
+        }
+        return;
+      }
+
+      spawn();
     };
 
     if (Platform.isWin) {
       const preferredBackend = getPreferredWindowsBackend();
       if (preferredBackend === "conpty") {
         try {
-          spawnWithOptions(true);
+          spawnWithOptions(true, passthroughRequested, passthroughRequested);
           return "conpty";
         } catch (error) {
-          console.warn("Terminal: ConPTY spawn failed, falling back to winpty", error);
+          console.warn(
+            passthroughRequested
+              ? "Terminal: ConPTY passthrough spawn failed, retrying without passthrough"
+              : "Terminal: ConPTY spawn failed, falling back to winpty",
+            error
+          );
+        }
+
+        if (passthroughRequested) {
+          try {
+            spawnWithOptions(true, true, false);
+            return "conpty";
+          } catch (error) {
+            console.warn("Terminal: bundled ConPTY DLL spawn failed, retrying system ConPTY", error);
+          }
+
+          try {
+            spawnWithOptions(true, false, false);
+            return "conpty";
+          } catch (error) {
+            console.warn("Terminal: ConPTY spawn failed, falling back to winpty", error);
+          }
         }
       }
 
-      spawnWithOptions(false);
+      spawnWithOptions(false, false);
       return "winpty";
     }
 

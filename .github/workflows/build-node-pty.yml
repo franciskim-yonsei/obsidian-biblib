@@ -20,9 +20,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2022
             platform: win32
             arch: x64
+          - os: windows-2022
+            platform: win32
+            arch: arm64
           - os: macos-15
             platform: darwin
             arch: arm64
@@ -47,6 +50,21 @@ jobs:
           npm init -y
           npm install node-pty@${{ inputs.node-pty-version || '1.1.0' }}
 
+      - name: Patch and rebuild node-pty for Windows
+        if: matrix.platform == 'win32'
+        shell: bash
+        run: |
+          SRC=staging/node_modules/node-pty
+          cd "$SRC"
+          git apply --unidiff-zero "$GITHUB_WORKSPACE/patches/conpty-passthrough.patch"
+          npm_config_arch=${{ matrix.arch }} npx --yes node-gyp rebuild --arch=${{ matrix.arch }}
+          npm_config_arch=${{ matrix.arch }} node scripts/post-install.js
+          test -f build/Release/pty.node
+          test -f build/Release/conpty.node
+          test -f build/Release/winpty.dll
+          test -f build/Release/conpty/conpty.dll
+          test -f build/Release/conpty/OpenConsole.exe
+
       - name: Package node-pty
         shell: bash
         run: |
@@ -57,8 +75,10 @@ jobs:
           cp -r "$SRC/lib/"* "$PKG/lib/"
           cp "$SRC/package.json" "$PKG/"
 
-          # Copy prebuilds (N-API binaries) if they exist for this platform
-          if [ -d "$SRC/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}" ]; then
+          # Copy prebuilds (N-API binaries) if they exist for this platform.
+          # Windows gets a patched build/Release below instead, because the npm
+          # prebuilds do not contain the ConPTY passthrough patch.
+          if [ "${{ matrix.platform }}" != "win32" ] && [ -d "$SRC/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}" ]; then
             mkdir -p "$PKG/prebuilds"
             cp -r "$SRC/prebuilds/${{ matrix.platform }}-${{ matrix.arch }}" "$PKG/prebuilds/"
           fi

@@ -7,10 +7,12 @@ interface BinaryManifest {
   platform: string;
   arch: string;
   installedAt: string;
+  nativePatch?: string;
 }
 
 const REPO_OWNER = "sdkasper";
 const REPO_NAME = "lean-obsidian-terminal";
+const WINDOWS_NATIVE_PATCH = "conpty-passthrough-v1";
 
 export class BinaryManager {
   private status: BinaryStatus = "not-installed";
@@ -53,7 +55,8 @@ export class BinaryManager {
         return false;
       }
 
-      // Check for native binary — prebuilds (win32/darwin) or build/Release (linux).
+      // Check for native binary — prebuilds (win32/darwin) or build/Release
+      // (linux and patched Windows CI builds).
       const prebuildDir = this.path.join(this.nodePtyDir, "prebuilds", `${platform}-${arch}`);
       const buildReleaseDir = this.path.join(this.nodePtyDir, "build", "Release");
       const hasPrebuild = this.fs.existsSync(this.path.join(prebuildDir, "pty.node"));
@@ -65,13 +68,19 @@ export class BinaryManager {
       }
 
       // Platform-specific checks.
-      if (platform === "win32" && hasPrebuild) {
-        const winpty = this.path.join(prebuildDir, "winpty.dll");
-        if (!this.fs.existsSync(winpty)) {
+      if (platform === "win32") {
+        const hasCompleteWindowsNativeSet = (dir: string): boolean =>
+          this.fs.existsSync(this.path.join(dir, "pty.node")) &&
+          this.fs.existsSync(this.path.join(dir, "conpty.node")) &&
+          this.fs.existsSync(this.path.join(dir, "winpty.dll")) &&
+          this.fs.existsSync(this.path.join(dir, "conpty", "conpty.dll")) &&
+          this.fs.existsSync(this.path.join(dir, "conpty", "OpenConsole.exe"));
+
+        if (!hasCompleteWindowsNativeSet(prebuildDir) && !hasCompleteWindowsNativeSet(buildReleaseDir)) {
           this.setStatus("not-installed");
           return false;
         }
-      } else if (platform !== "win32" && hasPrebuild) {
+      } else if (hasPrebuild) {
         const spawnHelper = this.path.join(prebuildDir, "spawn-helper");
         if (!this.fs.existsSync(spawnHelper)) {
           this.setStatus("not-installed");
@@ -85,14 +94,20 @@ export class BinaryManager {
         if (
           manifest.platform !== platform ||
           manifest.arch !== arch ||
-          manifest.version !== this.expectedVersion
+          manifest.version !== this.expectedVersion ||
+          (platform === "win32" && manifest.nativePatch !== WINDOWS_NATIVE_PATCH)
         ) {
           this.setStatus("not-installed");
           return false;
         }
+      } else if (platform === "win32") {
+        // Windows binaries now carry native patches. Unmanifested Windows
+        // installs may be older/unpatched, so force a fresh download.
+        this.setStatus("not-installed");
+        return false;
       } else {
-        // Legacy installs predate the manifest. Migrate them in place so future
-        // checks are version-aware without breaking existing local installs.
+        // Legacy non-Windows installs predate the manifest. Migrate them in place
+        // so future checks are version-aware without breaking existing local installs.
         this.writeManifest({
           version: this.expectedVersion,
           platform,
@@ -197,6 +212,7 @@ export class BinaryManager {
         platform,
         arch,
         installedAt: new Date().toISOString(),
+        ...(platform === "win32" ? { nativePatch: WINDOWS_NATIVE_PATCH } : {}),
       });
 
       this.setStatus("ready");

@@ -1,0 +1,22 @@
+--- a/src/win/conpty.cc
++++ b/src/win/conpty.cc
+@@ -14 +14 @@
+-#include <node_api.h>
++#include <napi.h>
+@@ -79,0 +80,9 @@
++static bool IsConptyPassthroughRequested() {
++  wchar_t value[8];
++  DWORD len = GetEnvironmentVariableW(
++      L"LEAN_TERMINAL_CONPTY_PASSTHROUGH",
++      value,
++      sizeof(value) / sizeof(value[0]));
++  return len > 0 && value[0] == L'1';
++}
++
+@@ -292 +301,5 @@
+-  HRESULT hr = CreateNamedPipesAndPseudoConsole(info, {cols, rows}, inheritCursor ? 1/*PSEUDOCONSOLE_INHERIT_CURSOR*/ : 0, &hIn, &hOut, &hpc, inName, outName, pipeName, useConptyDll);
++  DWORD dwFlags = inheritCursor ? 1/*PSEUDOCONSOLE_INHERIT_CURSOR*/ : 0;
++  if (useConptyDll && IsConptyPassthroughRequested()) {
++    dwFlags |= PSEUDOCONSOLE_PASSTHROUGH_MODE;
++  }
++  HRESULT hr = CreateNamedPipesAndPseudoConsole(info, {cols, rows}, dwFlags, &hIn, &hOut, &hpc, inName, outName, pipeName, useConptyDll);

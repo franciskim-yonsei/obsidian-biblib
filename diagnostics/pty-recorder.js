@@ -6,8 +6,10 @@
  *   node diagnostics/pty-recorder.js -- codex
  *   node diagnostics/pty-recorder.js -- pi
  *   node diagnostics/pty-recorder.js --raw -- codex   # captures raw base64 chunks; may contain secrets
- *   node diagnostics/pty-recorder.js --winpty -- pi    # force winpty on Windows
- *   node diagnostics/pty-recorder.js --conpty -- pi    # force ConPTY on Windows
+ *   node diagnostics/pty-recorder.js --winpty -- pi       # force winpty on Windows
+ *   node diagnostics/pty-recorder.js --conpty -- pi       # force ConPTY on Windows
+ *   node diagnostics/pty-recorder.js --conpty-dll -- pi   # use bundled conpty.dll
+ *   node diagnostics/pty-recorder.js --passthrough -- pi  # request ConPTY passthrough mode
  *
  * It runs the command in a nested PTY, mirrors it to the current terminal, and
  * writes timing/escape summaries to diagnostics/captures/*.jsonl.
@@ -22,15 +24,17 @@ const argv = process.argv.slice(2);
 const raw = argv.includes("--raw");
 const forceWinpty = argv.includes("--winpty");
 const forceConpty = argv.includes("--conpty");
+const forceConptyDll = argv.includes("--conpty-dll") || argv.includes("--passthrough");
+const passthrough = argv.includes("--passthrough");
 const sep = argv.indexOf("--");
-const recorderFlags = new Set(["--raw", "--winpty", "--conpty"]);
+const recorderFlags = new Set(["--raw", "--winpty", "--conpty", "--conpty-dll", "--passthrough"]);
 const commandArgs = (sep >= 0 ? argv.slice(sep + 1) : argv.filter((a) => !recorderFlags.has(a)));
-if (forceWinpty && forceConpty) {
-  console.error("Choose only one of --winpty or --conpty");
+if (forceWinpty && (forceConpty || forceConptyDll || passthrough)) {
+  console.error("Choose only one of --winpty, --conpty, --conpty-dll, or --passthrough");
   process.exit(2);
 }
 if (commandArgs.length === 0) {
-  console.error("Usage: node diagnostics/pty-recorder.js [--raw] -- <command> [args...]");
+  console.error("Usage: node diagnostics/pty-recorder.js [--raw] [--winpty|--conpty|--conpty-dll|--passthrough] -- <command> [args...]");
   process.exit(2);
 }
 
@@ -117,21 +121,53 @@ writeLog({
   },
   size: { cols, rows },
   raw,
-  backend: forceWinpty ? "winpty" : forceConpty ? "conpty" : "default",
+  backend: forceWinpty
+    ? "winpty"
+    : passthrough
+      ? "conpty-dll-passthrough"
+      : forceConptyDll
+        ? "conpty-dll"
+        : forceConpty
+          ? "conpty"
+          : "default",
+  useConptyDll: forceConptyDll,
+  passthrough,
 });
 
 console.error(`\n[pty-recorder] logging to ${logPath}`);
 console.error("[pty-recorder] exit the child normally or press Ctrl+C; raw=false by default.\n");
 
-const child = pty.spawn(file, args, {
+if (passthrough) {
+  env.LEAN_TERMINAL_CONPTY_PASSTHROUGH = "1";
+}
+
+const spawnPty = () => pty.spawn(file, args, {
   name: env.TERM || "xterm-256color",
   cols,
   rows,
   cwd: process.cwd(),
   env,
   ...(process.platform === "win32" && forceWinpty ? { useConpty: false } : {}),
-  ...(process.platform === "win32" && forceConpty ? { useConpty: true } : {}),
+  ...(process.platform === "win32" && (forceConpty || forceConptyDll || passthrough) ? { useConpty: true } : {}),
+  ...(process.platform === "win32" && forceConptyDll ? { useConptyDll: true } : {}),
 });
+
+const previousPassthrough = process.env.LEAN_TERMINAL_CONPTY_PASSTHROUGH;
+if (passthrough) {
+  process.env.LEAN_TERMINAL_CONPTY_PASSTHROUGH = "1";
+}
+let child;
+try {
+  child = spawnPty();
+} finally {
+  if (passthrough) {
+    if (previousPassthrough === undefined) {
+      delete process.env.LEAN_TERMINAL_CONPTY_PASSTHROUGH;
+    } else {
+      process.env.LEAN_TERMINAL_CONPTY_PASSTHROUGH = previousPassthrough;
+    }
+  }
+}
 
 let last = Date.now();
 let seq = 0;

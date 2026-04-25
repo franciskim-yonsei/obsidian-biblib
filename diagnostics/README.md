@@ -72,8 +72,14 @@ Examples:
 ```bash
 node diagnostics/pty-recorder.js --raw -- pi --no-session
 node diagnostics/pty-recorder.js --raw --conpty -- pi --no-session
+node diagnostics/pty-recorder.js --raw --conpty-dll -- pi --no-session
+node diagnostics/pty-recorder.js --raw --passthrough -- pi --no-session
 node diagnostics/pty-recorder.js --raw --winpty -- pi --no-session
 ```
+
+`--passthrough` requires patched Windows node-pty binaries; it implies the bundled
+`conpty.dll` path and sets `LEAN_TERMINAL_CONPTY_PASSTHROUGH=1` around the
+native spawn call.
 
 This recorder is intentionally invasive on Windows because it nests a PTY inside the current terminal. That invasiveness became part of the diagnosis.
 
@@ -129,10 +135,13 @@ Removed transient/invalid captures included failed console-recorder attempts, na
 
 ## Recommended next move
 
-Prototype a **direct-process mode** for selected commands, especially `pi`, that bypasses `node-pty`/ConPTY:
+Implement and validate **ConPTY passthrough mode** as described in
+`diagnostics/conpty-passthrough-plan.md`. A direct-process mode remains useful
+as a fallback/escape hatch, but the preferred root-cause fix is now:
 
 ```text
-Obsidian plugin -> child_process.spawn("pi", ...) with pipes -> xterm.js
+Obsidian plugin -> patched node-pty -> bundled conpty.dll with PSEUDOCONSOLE_PASSTHROUGH_MODE -> xterm.js
 ```
 
-This would not replace the normal shell terminal. It would be a special launcher/mode for TUIs whose output is degraded by the PTY layer. The direct WT console recorder is the evidence that this architecture preserves pi's smooth synchronized stream better than nested `node-pty`/ConPTY.
+If passthrough restores `pi --no-session` sync coverage to roughly the direct
+console-recorder range, the direct-process workaround can be retired.

@@ -10,6 +10,7 @@ import { resolve, join } from "path";
 
 const vaultPath = process.argv[2] || "D:\\LOS Test";
 const pluginDir = join(vaultPath, ".obsidian", "plugins", "lean-terminal");
+const WINDOWS_NATIVE_PATCH = "conpty-passthrough-v1";
 
 if (!existsSync(join(vaultPath, ".obsidian"))) {
   console.error(`Error: ${vaultPath} does not appear to be an Obsidian vault (no .obsidian folder)`);
@@ -36,6 +37,26 @@ for (const file of files) {
 const nodePtySrc = join(srcDir, "node_modules", "node-pty");
 const nodePtyDest = join(pluginDir, "node_modules", "node-pty");
 const binaryManifestDest = join(nodePtyDest, ".binary-manifest.json");
+
+function hasCompleteWindowsNativeSet(dir) {
+  return (
+    existsSync(join(dir, "pty.node")) &&
+    existsSync(join(dir, "conpty.node")) &&
+    existsSync(join(dir, "winpty.dll")) &&
+    existsSync(join(dir, "conpty", "conpty.dll")) &&
+    existsSync(join(dir, "conpty", "OpenConsole.exe"))
+  );
+}
+
+function hasPassthroughSourcePatch(dir) {
+  try {
+    const source = readFileSync(join(dir, "src", "win", "conpty.cc"), "utf-8");
+    return source.includes("IsConptyPassthroughRequested") &&
+      source.includes("PSEUDOCONSOLE_PASSTHROUGH_MODE");
+  } catch {
+    return false;
+  }
+}
 
 if (!existsSync(nodePtySrc)) {
   console.error("Error: node_modules/node-pty not found. Run 'npm install' first.");
@@ -82,6 +103,10 @@ if (existsSync(thirdParty)) {
   }
 }
 
+const hasPatchedWindowsBuild = process.platform === "win32" &&
+  hasCompleteWindowsNativeSet(buildRelease) &&
+  hasPassthroughSourcePatch(nodePtySrc);
+
 if (!binaryWarning) {
   writeFileSync(
     binaryManifestDest,
@@ -91,6 +116,7 @@ if (!binaryWarning) {
         platform: process.platform,
         arch: process.arch,
         installedAt: new Date().toISOString(),
+        ...(hasPatchedWindowsBuild ? { nativePatch: WINDOWS_NATIVE_PATCH } : {}),
       },
       null,
       2
@@ -101,6 +127,11 @@ if (!binaryWarning) {
 
 if (binaryWarning) {
   console.log("  Copied node-pty lib + patch (binaries locked by Obsidian — existing binaries unchanged)");
+} else if (process.platform === "win32" && hasPatchedWindowsBuild) {
+  console.log("  Copied node-pty (patched local Windows build)");
+} else if (process.platform === "win32") {
+  console.log("  Copied node-pty, but no patched local Windows build was found");
+  console.log("  The plugin will ask to download terminal binaries instead of trusting this local copy");
 } else {
   console.log("  Copied node-pty (prebuilt N-API binaries)");
 }

@@ -1,8 +1,10 @@
-import { FileSystemAdapter, Plugin, WorkspaceLeaf, setIcon } from "obsidian";
+import { App, FileSystemAdapter, Modal, Notice, Plugin, WorkspaceLeaf, setIcon } from "obsidian";
 import { VIEW_TYPE_TERMINAL } from "./constants";
 import { TerminalView } from "./terminal-view";
 import { TerminalSettingTab, DEFAULT_SETTINGS, type TerminalPluginSettings } from "./settings";
 import { BinaryManager } from "./binary-manager";
+
+const DIRECT_PROCESS_DEFAULT_COMMAND = "pi --no-session";
 
 export default class TerminalPlugin extends Plugin {
   settings: TerminalPluginSettings = DEFAULT_SETTINGS;
@@ -56,6 +58,12 @@ export default class TerminalPlugin extends Plugin {
       callback: () => this.toggleTerminal(),
     });
 
+    this.addCommand({
+      id: "direct-process-tab",
+      name: "Open direct-process tab (bypass PTY)…",
+      callback: () => void this.openDirectProcessTab(),
+    });
+
     this.addSettingTab(new TerminalSettingTab(this.app, this));
   }
 
@@ -107,6 +115,25 @@ export default class TerminalPlugin extends Plugin {
     }
   }
 
+  private async openDirectProcessTab(): Promise<void> {
+    let leaf = this.getPreferredTerminalLeaf();
+    if (!leaf) {
+      await this.activateTerminal();
+      leaf = this.getPreferredTerminalLeaf();
+    }
+    if (!leaf) return;
+
+    const view = leaf.view as TerminalView;
+    new DirectProcessPromptModal(this.app, DIRECT_PROCESS_DEFAULT_COMMAND, (commandLine) => {
+      try {
+        view.getTabManager()?.createDirectTab(commandLine);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        new Notice(`Direct-process tab failed: ${message}`);
+      }
+    }).open();
+  }
+
   private getPreferredTerminalLeaf(): WorkspaceLeaf | null {
     const activeLeaf = this.app.workspace.activeLeaf;
     if (activeLeaf?.view?.getViewType?.() === VIEW_TYPE_TERMINAL) {
@@ -140,5 +167,71 @@ export default class TerminalPlugin extends Plugin {
       const iconEl = (leaf as any).tabHeaderInnerIconEl as HTMLElement | undefined;
       if (iconEl) setIcon(iconEl, safeName);
     }
+  }
+}
+
+class DirectProcessPromptModal extends Modal {
+  private readonly defaultValue: string;
+  private readonly onSubmit: (commandLine: string) => void;
+
+  constructor(app: App, defaultValue: string, onSubmit: (commandLine: string) => void) {
+    super(app);
+    this.defaultValue = defaultValue;
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen(): void {
+    const { contentEl, titleEl } = this;
+    titleEl.setText("Open direct-process tab");
+
+    contentEl.createEl("p", {
+      text: "Spawns the command with child_process.spawn (no node-pty/ConPTY). " +
+        "Use for TUIs whose synchronized output is degraded by the PTY layer. " +
+        "Live resize is not signaled to the child.",
+    });
+
+    const input = contentEl.createEl("input", { type: "text" });
+    input.value = this.defaultValue;
+    input.style.width = "100%";
+    input.style.fontFamily = "var(--font-monospace)";
+    input.placeholder = "command [args…]";
+    setTimeout(() => {
+      input.focus();
+      input.select();
+    }, 0);
+
+    const submit = (): void => {
+      const value = input.value.trim();
+      if (!value) return;
+      this.close();
+      this.onSubmit(value);
+    };
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submit();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.close();
+      }
+    });
+
+    const buttonRow = contentEl.createDiv();
+    buttonRow.style.display = "flex";
+    buttonRow.style.justifyContent = "flex-end";
+    buttonRow.style.gap = "8px";
+    buttonRow.style.marginTop = "12px";
+
+    const cancel = buttonRow.createEl("button", { text: "Cancel" });
+    cancel.addEventListener("click", () => this.close());
+
+    const ok = buttonRow.createEl("button", { text: "Open" });
+    ok.classList.add("mod-cta");
+    ok.addEventListener("click", submit);
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
   }
 }

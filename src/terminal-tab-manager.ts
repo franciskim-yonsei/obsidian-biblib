@@ -4,9 +4,24 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { PtyManager, getPreferredWindowsBackend } from "./pty-manager";
 import type { WindowsTerminalBackend } from "./pty-manager";
+import { DirectProcessManager } from "./direct-process-manager";
 import { getTheme } from "./themes";
 import type { TerminalPluginSettings } from "./settings";
 import type { BinaryManager } from "./binary-manager";
+
+/**
+ * Subset of PtyManager's surface that a tab needs once spawned. Shared by
+ * PtyManager (shell tabs through node-pty/ConPTY) and DirectProcessManager
+ * (direct child_process.spawn tabs that bypass the PTY layer).
+ */
+export interface TerminalProcess {
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  onData(callback: (data: string) => void): void;
+  onExit(callback: (info: { exitCode: number; signal?: number }) => void): void;
+  kill(): void;
+  readonly pid: number | undefined;
+}
 
 export const TAB_COLORS = [
   { name: "None", value: "" },
@@ -23,10 +38,11 @@ export interface TerminalSession {
   name: string;
   terminal: Terminal;
   fitAddon: FitAddon;
-  pty: PtyManager;
+  pty: TerminalProcess;
   syncGate: SynchronizedOutputGate;
   containerEl: HTMLElement;
   color: string;
+  kind: "shell" | "direct";
 }
 
 let sessionCounter = 0;
@@ -456,26 +472,111 @@ export class TerminalTabManager {
   }
 
   createTab(): TerminalSession {
+    const pty = new PtyManager(this.pluginDir);
+    const session = this.buildSession({
+      kind: "shell",
+      labelPrefix: "Terminal",
+      process: pty,
+      useWindowsPty: true,
+    });
+
+    setTimeout(() => {
+      try { session.fitAddon.fit(); } catch { /* ignore */ }
+
+      const cols = session.terminal.cols || 80;
+      const rows = session.terminal.rows || 24;
+
+      if (!this.binaryManager.isReady()) {
+        session.terminal.write("\r\n\x1b[33mTerminal binaries not installed.\x1b[0m\r\n");
+        session.terminal.write("Go to Settings \u2192 Terminal to download them.\r\n");
+        return;
+      }
+
+      try {
+        const backend = pty.spawn(this.settings.shellPath, this.cwd, cols, rows, undefined, {
+          conptyPassthrough: this.settings.conptyPassthrough,
+        });
+        if (Platform.isWin) {
+          session.terminal.options.windowsPty = getWindowsPtyOptions(backend);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        console.error("Terminal: failed to spawn shell", err);
+        session.terminal.write(`\r\nFailed to spawn shell: ${message}\r\n`);
+        return;
+      }
+
+      this.wireProcess(session);
+    }, 100);
+
+    return session;
+  }
+
+  /**
+   * Creates a tab whose process is spawned with `child_process.spawn` and piped
+   * stdio rather than node-pty/ConPTY. Used as an escape hatch for TUIs whose
+   * synchronized output stream is degraded by ConPTY's reserialization (the
+   * `pi` flicker case documented in diagnostics/README.md).
+   */
+  createDirectTab(commandLine: string, displayName?: string): TerminalSession {
+    const trimmed = commandLine.trim();
+    if (!trimmed) {
+      throw new Error("Direct-process command line is empty.");
+    }
+
+    const direct = new DirectProcessManager(this.pluginDir);
+    const label = displayName?.trim() || trimmed.split(/\s+/)[0] || "Direct";
+    const session = this.buildSession({
+      kind: "direct",
+      labelPrefix: label,
+      process: direct,
+      useWindowsPty: false,
+    });
+
+    setTimeout(() => {
+      try { session.fitAddon.fit(); } catch { /* ignore */ }
+
+      const cols = session.terminal.cols || 80;
+      const rows = session.terminal.rows || 24;
+
+      try {
+        direct.spawn(trimmed, this.cwd, cols, rows);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "unknown error";
+        console.error("Terminal: failed to spawn direct process", err);
+        session.terminal.write(`\r\nFailed to spawn process: ${message}\r\n`);
+        return;
+      }
+
+      this.wireProcess(session);
+    }, 100);
+
+    return session;
+  }
+
+  private buildSession(opts: {
+    kind: "shell" | "direct";
+    labelPrefix: string;
+    process: TerminalProcess;
+    useWindowsPty: boolean;
+  }): TerminalSession {
     sessionCounter++;
     const id = `terminal-${sessionCounter}`;
-    const name = `Terminal ${sessionCounter}`;
+    const name = `${opts.labelPrefix} ${sessionCounter}`;
 
-    // Create container for this session
     const containerEl = this.terminalHostEl.createDiv({ cls: "terminal-session" });
 
-    // Create xterm.js instance
     const theme = getTheme(this.settings.theme);
     if (this.settings.backgroundColor) {
       theme.background = this.settings.backgroundColor;
     }
-    const windowsPty = getWindowsPtyOptions();
     const terminal = new Terminal({
       fontSize: this.settings.fontSize,
       fontFamily: this.settings.fontFamily,
       cursorBlink: this.settings.cursorBlink,
       scrollback: this.settings.scrollback,
       theme,
-      windowsPty,
+      ...(opts.useWindowsPty ? { windowsPty: getWindowsPtyOptions() } : {}),
     });
 
     const fitAddon = new FitAddon();
@@ -490,7 +591,6 @@ export class TerminalTabManager {
       if (e.type !== "keydown") return true;
       const mod = e.metaKey || e.ctrlKey;
 
-      // Shift+Enter: send newline without submitting.
       if (e.shiftKey && e.key === "Enter") {
         e.preventDefault();
         const s = this.sessions.find((s) => s.id === id);
@@ -498,7 +598,6 @@ export class TerminalTabManager {
         return false;
       }
 
-      // Paste: Ctrl+V / Cmd+V / Shift+Insert.
       if ((mod && e.key === "v") || (e.shiftKey && e.key === "Insert")) {
         e.preventDefault();
         navigator.clipboard.readText().then((text) => {
@@ -510,9 +609,6 @@ export class TerminalTabManager {
         return false;
       }
 
-      // Copy: Ctrl+C / Cmd+C when there is a selection (otherwise send SIGINT).
-      // Trim trailing whitespace from each line: xterm pads every row to the
-      // full column width with spaces, which makes multi-line pastes ugly.
       if (mod && e.key === "c" && terminal.hasSelection()) {
         const text = terminal
           .getSelection()
@@ -527,62 +623,30 @@ export class TerminalTabManager {
       return true;
     });
 
-    const pty = new PtyManager(this.pluginDir);
     const syncGate = new SynchronizedOutputGate(terminal);
     const session: TerminalSession = {
-      id, name, terminal, fitAddon, pty, syncGate, containerEl, color: "",
+      id, name, terminal, fitAddon, pty: opts.process, syncGate, containerEl, color: "",
+      kind: opts.kind,
     };
     this.sessions.push(session);
     this.switchTab(id);
     this.renderTabBar();
     this.renderBottomBar();
 
-    // Defer PTY spawn until DOM is laid out so fitAddon gets correct dimensions
-    setTimeout(() => {
-      try {
-        fitAddon.fit();
-      } catch {
-        // ignore
-      }
-
-      const cols = terminal.cols || 80;
-      const rows = terminal.rows || 24;
-
-      if (!this.binaryManager.isReady()) {
-        terminal.write("\r\n\x1b[33mTerminal binaries not installed.\x1b[0m\r\n");
-        terminal.write("Go to Settings \u2192 Terminal to download them.\r\n");
-        return;
-      }
-
-      try {
-        const backend = pty.spawn(this.settings.shellPath, this.cwd, cols, rows);
-        if (Platform.isWin) {
-          terminal.options.windowsPty = getWindowsPtyOptions(backend);
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "unknown error";
-        console.error("Terminal: failed to spawn shell", err);
-        terminal.write(`\r\nFailed to spawn shell: ${message}\r\n`);
-        return;
-      }
-
-      // Wire data: PTY -> xterm. SynchronizedOutputGate implements DECSET
-      // 2026 paint suppression for TUIs that emit synchronized redraw blocks.
-      pty.onData((data: string) => {
-        syncGate.write(data);
-      });
-
-      // Wire data: xterm -> PTY
-      terminal.onData((data: string) => {
-        pty.write(data);
-      });
-
-      pty.onExit(() => {
-        this.closeTab(session.id);
-      });
-    }, 100);
-
     return session;
+  }
+
+  private wireProcess(session: TerminalSession): void {
+    // PTY/process -> xterm via SynchronizedOutputGate (DECSET 2026 shim).
+    session.pty.onData((data: string) => {
+      session.syncGate.write(data);
+    });
+    session.terminal.onData((data: string) => {
+      session.pty.write(data);
+    });
+    session.pty.onExit(() => {
+      this.closeTab(session.id);
+    });
   }
 
   switchTab(id: string): void {
