@@ -6,6 +6,8 @@
  *   node diagnostics/pty-recorder.js -- codex
  *   node diagnostics/pty-recorder.js -- pi
  *   node diagnostics/pty-recorder.js --raw -- codex   # captures raw base64 chunks; may contain secrets
+ *   node diagnostics/pty-recorder.js --winpty -- pi    # force winpty on Windows
+ *   node diagnostics/pty-recorder.js --conpty -- pi    # force ConPTY on Windows
  *
  * It runs the command in a nested PTY, mirrors it to the current terminal, and
  * writes timing/escape summaries to diagnostics/captures/*.jsonl.
@@ -18,8 +20,15 @@ const pty = require("node-pty");
 
 const argv = process.argv.slice(2);
 const raw = argv.includes("--raw");
+const forceWinpty = argv.includes("--winpty");
+const forceConpty = argv.includes("--conpty");
 const sep = argv.indexOf("--");
-const commandArgs = (sep >= 0 ? argv.slice(sep + 1) : argv.filter((a) => a !== "--raw"));
+const recorderFlags = new Set(["--raw", "--winpty", "--conpty"]);
+const commandArgs = (sep >= 0 ? argv.slice(sep + 1) : argv.filter((a) => !recorderFlags.has(a)));
+if (forceWinpty && forceConpty) {
+  console.error("Choose only one of --winpty or --conpty");
+  process.exit(2);
+}
 if (commandArgs.length === 0) {
   console.error("Usage: node diagnostics/pty-recorder.js [--raw] -- <command> [args...]");
   process.exit(2);
@@ -108,6 +117,7 @@ writeLog({
   },
   size: { cols, rows },
   raw,
+  backend: forceWinpty ? "winpty" : forceConpty ? "conpty" : "default",
 });
 
 console.error(`\n[pty-recorder] logging to ${logPath}`);
@@ -119,6 +129,8 @@ const child = pty.spawn(file, args, {
   rows,
   cwd: process.cwd(),
   env,
+  ...(process.platform === "win32" && forceWinpty ? { useConpty: false } : {}),
+  ...(process.platform === "win32" && forceConpty ? { useConpty: true } : {}),
 });
 
 let last = Date.now();
