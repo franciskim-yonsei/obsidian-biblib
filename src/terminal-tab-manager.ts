@@ -598,18 +598,23 @@ export class TerminalTabManager {
         return false;
       }
 
-      if ((mod && e.key === "v") || (e.shiftKey && e.key === "Insert")) {
+      if ((mod && e.key.toLowerCase() === "v") || (e.shiftKey && e.key === "Insert")) {
         e.preventDefault();
         navigator.clipboard.readText().then((text) => {
           if (text) {
-            const s = this.sessions.find((s) => s.id === id);
-            if (s) s.pty.write(text);
+            // Route pasted text through xterm's paste path rather than writing
+            // directly to the PTY. xterm normalizes newlines for terminal input
+            // and, when the foreground app has enabled bracketed paste mode
+            // (DECSET ?2004), wraps the payload in \x1b[200~ / \x1b[201~ so
+            // agent CLIs can treat multi-line pastes as pasted text instead of
+            // pressing Enter for every line.
+            terminal.paste(text);
           }
         }).catch(() => { /* clipboard unavailable */ });
         return false;
       }
 
-      if (mod && e.key === "c" && terminal.hasSelection()) {
+      if (mod && e.key.toLowerCase() === "c" && terminal.hasSelection()) {
         const text = terminal
           .getSelection()
           .split("\n")
