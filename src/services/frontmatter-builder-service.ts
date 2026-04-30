@@ -58,6 +58,7 @@ export class FrontmatterBuilderService {
         ...(citation.URL && { URL: citation.URL }),
         ...(citation.DOI && { DOI: citation.DOI }),
         ...(citation['container-title'] && { 'container-title': citation['container-title'] }),
+        ...(citation['container-title-short'] && { 'container-title-short': citation['container-title-short'] }),
         ...(citation.publisher && { publisher: citation.publisher }),
         ...(citation['publisher-place'] && { 'publisher-place': citation['publisher-place'] }),
         ...(citation.edition && { 

@@ -39,6 +39,29 @@ describe('FrontmatterBuilderService', () => {
     expect(yaml).not.toContain('date-parts');
   });
 
+  it('stores abbreviated container titles in frontmatter', async () => {
+    const service = new FrontmatterBuilderService(new TemplateVariableBuilderService());
+
+    const yaml = await service.buildYamlFrontmatter({
+      citation: {
+        id: 'smith_2026_nat.commun',
+        type: 'article-journal',
+        title: 'Example Article',
+        'container-title': 'Nature Communications',
+        'container-title-short': 'Nat.Commun.'
+      },
+      contributors: [
+        { role: 'author', family: 'Smith', given: 'Jane' }
+      ],
+      additionalFields: [],
+      attachmentPaths: [],
+      pluginSettings: DEFAULT_SETTINGS
+    });
+
+    expect(yaml).toContain('container-title: Nature Communications');
+    expect(yaml).toContain('container-title-short: Nat.Commun.');
+  });
+
   it('applies the configured frontmatter field order before serializing YAML', async () => {
     const service = new FrontmatterBuilderService(new TemplateVariableBuilderService());
 

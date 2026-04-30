@@ -725,10 +725,7 @@ export class BibliographyModal extends BaseBibliographyModal {
     protected getFormValues(): Citation {
         // Build citation object from form fields
         const citation: Citation = {
-            id: this.idInput.value || CitekeyGenerator.generate({ 
-                title: this.titleInput.value,
-                author: this.contributors.filter(c => c.role === 'author')
-            }, this.settings.citekeyOptions),
+            id: this.idInput.value || '',
             type: this.typeDropdown.value as (typeof CSL_TYPES)[number],
             title: this.titleInput.value,
             'title-short': this.titleShortInput.value || undefined,
@@ -825,6 +822,10 @@ export class BibliographyModal extends BaseBibliographyModal {
                 citation[fieldName] = value;
             }
         });
+
+        if (!citation.id) {
+            citation.id = CitekeyGenerator.generate(citation, this.settings.citekeyOptions);
+        }
         
         return citation;
     }
