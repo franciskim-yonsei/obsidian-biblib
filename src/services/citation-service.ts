@@ -13,10 +13,31 @@ import { DateParser } from '../utils/date-parser';
 import { CitoidService } from './api/citoid';
 import { Notice } from 'obsidian';
 import { CitekeyGenerator } from '../utils/citekey-generator'; // Adjust path if needed
+import { lookupNlmJournalAbbreviation } from '../utils/nlm-journal-abbreviations';
 
 
 // --- Zotero to CSL Mapping Logic (Full Adaptation) ---
 // Type mappings and field mappings are now loaded from src/data/zotero-mappings.json
+
+const normalizeJournalAbbreviation = (value: unknown): string | undefined => {
+    if (typeof value !== 'string') return undefined;
+    const normalized = value.replace(/\./g, '').replace(/\s+/g, ' ').trim();
+    return normalized || undefined;
+};
+
+function applyNlmJournalAbbreviation(cslData: Record<string, any>): void {
+    const nlmAbbreviation = lookupNlmJournalAbbreviation(cslData['container-title'], cslData.ISSN) ||
+        lookupNlmJournalAbbreviation(cslData['container-title-short']);
+
+    if (nlmAbbreviation) {
+        cslData['container-title-short'] = nlmAbbreviation;
+        return;
+    }
+
+    if (cslData['container-title-short']) {
+        cslData['container-title-short'] = normalizeJournalAbbreviation(cslData['container-title-short']) || cslData['container-title-short'];
+    }
+}
 
 const mapZoteroCreatorToCsl = (creator: any): { literal: string } | { family: string, given?: string } | undefined => {
     if (!creator) return undefined;
@@ -149,6 +170,7 @@ export class CitationService {
         }
 
         entry.type = entry.type || 'document';
+        applyNlmJournalAbbreviation(entry);
 
         if (!entry.id || typeof entry.id !== 'string' || entry.id.trim() === '') {
             entry.id = CitekeyGenerator.generate(entry, this.citekeyOptions);
@@ -318,6 +340,7 @@ export class CitationService {
                     entry.id = CitekeyGenerator.generate(entry, this.citekeyOptions);
                 }
 
+                applyNlmJournalAbbreviation(entry);
                 return entry;
              } catch(fallbackError: any) {
                 console.error('Citation.js fallback also failed:', fallbackError);
@@ -503,6 +526,8 @@ export class CitationService {
                 delete csl[lowerField];
             }
         });
+        
+        applyNlmJournalAbbreviation(csl);
         
         // Special handling for accessed date - ensure it has proper date-parts structure
         if (csl.accessed) {

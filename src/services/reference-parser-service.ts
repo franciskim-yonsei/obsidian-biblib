@@ -1,4 +1,5 @@
 import { CitationService } from './citation-service';
+import { lookupNlmJournalAbbreviation } from '../utils/nlm-journal-abbreviations';
 
 /**
  * Interface for a parsed reference representing a standardized entry from various source formats
@@ -159,6 +160,12 @@ export class ReferenceParserService {
             title: entry.title || 'Untitled Entry',
             id: entry.id || 'unknown'
           };
+
+          const nlmAbbreviation = lookupNlmJournalAbbreviation(cslData['container-title'], cslData.ISSN) ||
+            lookupNlmJournalAbbreviation(cslData['container-title-short']);
+          if (nlmAbbreviation) {
+            cslData['container-title-short'] = nlmAbbreviation;
+          }
           
           // Extract file field(s) if present
           const _sourceFields: ParsedReference['_sourceFields'] = {};

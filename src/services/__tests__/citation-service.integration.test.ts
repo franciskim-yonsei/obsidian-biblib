@@ -53,6 +53,22 @@ describe('CitationService Integration', () => {
             expect(csl.issued['date-parts']).toBeDefined();
         });
 
+        it('should populate official NLM journal abbreviations', () => {
+            const zoteroItem = {
+                itemType: 'journalArticle',
+                title: 'Example Neuroscience Article',
+                creators: [{ creatorType: 'author', firstName: 'Jane', lastName: 'Smith' }],
+                date: '2024',
+                publicationTitle: 'The Journal of Neuroscience',
+                ISSN: '0270-6474'
+            };
+
+            const csl = service.parseZoteroItem(zoteroItem);
+
+            expect(csl['container-title']).toBe('The Journal of Neuroscience');
+            expect(csl['container-title-short']).toBe('J Neurosci');
+        });
+
         it('should generate a citekey from the template', () => {
             const zoteroItem = {
                 itemType: 'journalArticle',
