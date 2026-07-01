@@ -3,11 +3,11 @@ import { BibliographyModal } from '../ui/modals/bibliography-modal';
 import { ChapterModal } from '../ui/modals/chapter-modal';
 import { BulkImportModal } from '../ui/modals/bulk-import-modal';
 import { EditBibliographyModal } from '../ui/modals/edit-bibliography-modal';
+import { AddAttachmentModal } from '../ui/modals/add-attachment-modal';
 import { BibliographyPluginSettings, hasLiteratureNoteTag } from '../types/settings';
 import { BibliographyBuilder } from '../services/bibliography-builder';
 import { ServiceManager } from './service-manager';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants';
-import { AttachmentData, AttachmentType } from '../types/citation';
 
 /**
  * Manages command registration for the Bibliography plugin
@@ -87,7 +87,7 @@ export class CommandRegistry {
                 if (!activeFile || !this.isLiteratureNote(activeFile)) return false;
                 if (checking) return true;
 
-                this.addAttachmentToCurrentNote(activeFile);
+                this.openAddAttachmentModal(activeFile);
                 return true;
             },
         });
@@ -159,60 +159,16 @@ export class CommandRegistry {
         return !!frontmatter && hasLiteratureNoteTag(frontmatter.tags, this.settings.literatureNoteTag);
     }
 
-    private async addAttachmentToCurrentNote(file: TFile): Promise<void> {
+    private openAddAttachmentModal(file: TFile): void {
         const cache = this.app.metadataCache.getFileCache(file);
         const citekey = cache?.frontmatter?.id || cache?.frontmatter?.citekey || file.basename.replace(/^@/, '');
-        const alias = window.prompt('Attachment alias (optional, e.g. SI)')?.trim() || undefined;
-        const sourceUrl = window.prompt('URL to download and store (leave blank to choose a local file)')?.trim();
 
-        const attachment = sourceUrl
-            ? { type: AttachmentType.DOWNLOAD, url: sourceUrl, alias }
-            : await this.pickLocalAttachment(alias);
-
-        if (!attachment) return;
-
-        const importedPath = await this.serviceManager.getAttachmentManager().importAttachment(attachment, citekey);
-        if (!importedPath) return;
-
-        const linkAlias = alias || this.defaultAttachmentAlias(importedPath);
-        const formattedLink = `[[${importedPath}|${linkAlias}]]`;
-
-        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-            const existing = frontmatter.attachment;
-            if (Array.isArray(existing)) {
-                if (!existing.includes(formattedLink)) existing.push(formattedLink);
-            } else if (typeof existing === 'string' && existing.trim()) {
-                frontmatter.attachment = existing === formattedLink ? [existing] : [existing, formattedLink];
-            } else {
-                frontmatter.attachment = [formattedLink];
-            }
-        });
-
-        new Notice(`Attachment added to ${file.basename}`);
-    }
-
-    private pickLocalAttachment(alias?: string): Promise<AttachmentData | null> {
-        return new Promise(resolve => {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '*/*';
-            input.onchange = () => {
-                const selected = input.files?.[0];
-                resolve(selected ? {
-                    type: AttachmentType.IMPORT,
-                    file: selected,
-                    filename: selected.name,
-                    alias
-                } : null);
-            };
-            input.click();
-        });
-    }
-
-    private defaultAttachmentAlias(path: string): string {
-        if (path.endsWith('.pdf')) return 'PDF';
-        if (path.endsWith('.epub')) return 'EPUB';
-        return path.split('.').pop()?.toUpperCase() || 'FILE';
+        new AddAttachmentModal(
+            this.app,
+            file,
+            citekey,
+            this.serviceManager.getAttachmentManager()
+        ).open();
     }
 
     /**
