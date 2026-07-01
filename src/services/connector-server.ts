@@ -209,9 +209,12 @@ export class ConnectorServer {
                  else this.sendMethodNotAllowed(res, endpoint);
                  break;
             // Translator Endpoint Handling
+            // We don't maintain our own translator repository. Respond with a
+            // real failure (not 200 []) so the Connector's own fallback to
+            // repo.zotero.org kicks in instead of treating "no code" as final.
             case 'getTranslatorCode':
             case 'getTranslators':
-                 this.sendResponse(res, 200, []);
+                 this.sendResponse(res, 404, { error: `Endpoint '${endpoint}' not implemented; client should fall back to repo.zotero.org` });
                  break;
             // Other Endpoints
             case 'delaySync':
