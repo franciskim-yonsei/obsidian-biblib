@@ -89,11 +89,12 @@ export class FrontmatterBuilderService {
       // arbitrary custom/additional frontmatter fields.
       this.addAdditionalFieldsToFrontmatter(frontmatter, additionalFields);
 
-      this.addBuiltInWorkflowFields(
+      await this.processCustomFrontmatterFields(
         frontmatter,
         citation,
         contributors,
         attachmentPaths,
+        pluginSettings,
         relatedNotePaths,
         attachmentAliases
       );

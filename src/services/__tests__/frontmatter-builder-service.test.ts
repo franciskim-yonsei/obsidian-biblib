@@ -62,6 +62,43 @@ describe('FrontmatterBuilderService', () => {
     expect(yaml).toContain('container-title-short: Nat.Commun.');
   });
 
+  it('does not write workflow fields that are not enabled as custom frontmatter fields', async () => {
+    const service = new FrontmatterBuilderService(new TemplateVariableBuilderService());
+
+    const yaml = await service.buildYamlFrontmatter({
+      citation: {
+        id: 'groves.bronner-fraser_2000_Development',
+        type: 'article-journal',
+        title: 'Competence, specification and commitment in otic placode induction',
+        issued: { 'date-parts': [[2000, 8, 15]] }
+      },
+      contributors: [
+        { role: 'author', family: 'Groves', given: 'Andrew K.' },
+        { role: 'author', family: 'Bronner-Fraser', given: 'Marianne' }
+      ],
+      additionalFields: [],
+      attachmentPaths: ['Attachments/groves.bronner-fraser_2000_Development/groves_bronner-fraser_2000_Development.pdf'],
+      pluginSettings: {
+        ...DEFAULT_SETTINGS,
+        customFrontmatterFields: [
+          {
+            name: 'attachment',
+            template: '[{{#attachments}}{{.}},{{/attachments}}]',
+            enabled: true
+          }
+        ]
+      }
+    });
+
+    expect(yaml).toContain('attachment:');
+    expect(yaml).toContain('Attachments/groves.bronner-fraser_2000_Development/groves_bronner-fraser_2000_Development.pdf');
+    expect(yaml).not.toContain('reading-status:');
+    expect(yaml).not.toContain('aliases:');
+    expect(yaml).not.toContain('author-links:');
+    expect(yaml).not.toContain('dateCreated:');
+    expect(yaml).not.toContain('year:');
+  });
+
   it('applies the configured frontmatter field order before serializing YAML', async () => {
     const service = new FrontmatterBuilderService(new TemplateVariableBuilderService());
 

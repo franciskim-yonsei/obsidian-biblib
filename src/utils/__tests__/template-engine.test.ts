@@ -175,6 +175,14 @@ describe('TemplateEngine', () => {
       expect(result.charAt(0)).toMatch(/[a-zA-Z0-9_]/);
     });
 
+    it('should preserve internal periods as citekey separators', () => {
+      const result = TemplateEngine.render('{{text}}', {
+        text: 'groves.bronner-fraser_2000_Development'
+      }, { sanitizeForCitekey: true });
+
+      expect(result).toBe('groves.bronner-fraser_2000_Development');
+    });
+
     it('should remove trailing punctuation', () => {
       const result = TemplateEngine.render('{{text}}', {
         text: 'valid-text-'

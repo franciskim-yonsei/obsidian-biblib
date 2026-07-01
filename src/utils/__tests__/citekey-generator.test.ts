@@ -143,6 +143,25 @@ describe('CitekeyGenerator', () => {
       expect(result).toBe('smith-2023');
     });
 
+    it('should preserve template-authored periods between author names', () => {
+      const citation = {
+        author: [
+          { family: 'Groves', given: 'Andrew K.' },
+          { family: 'Bronner-Fraser', given: 'Marianne' }
+        ],
+        issued: { 'date-parts': [[2000]] },
+        'container-title-short': 'Development'
+      };
+
+      const result = CitekeyGenerator.generate(citation, {
+        citekeyTemplate: '{{author|lowercase}}{{#authors.2}}.etal{{/authors.2}}{{^authors.2}}{{#authors.1}}.{{authors.1.family|lowercase}}{{/authors.1}}{{/authors.2}}_{{year}}{{#container-title-short}}_{{container-title-short}}{{/container-title-short}}',
+        useZoteroKeys: false,
+        minCitekeyLength: 6
+      });
+
+      expect(result).toBe('groves.bronner-fraser_2000_Development');
+    });
+
     it('should not have trailing punctuation', () => {
       const citation = {
         author: [{ family: 'Smith' }],
