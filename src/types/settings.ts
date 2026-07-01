@@ -199,11 +199,6 @@ export const DEFAULT_FRONTMATTER_FIELD_ORDER: string[] = [
         'translator',
         'container-author',
         'accessed',
-        'year',
-        'dateCreated',
-        'reading-status',
-        'aliases',
-        'author-links',
         'attachment',
         'related'
 ];
@@ -252,38 +247,8 @@ export const DEFAULT_SETTINGS: BibliographyPluginSettings = {
         // Default custom frontmatter fields
         customFrontmatterFields: [
                 {
-                        name: 'year',
-                        template: '{{year}}',
-                        enabled: true
-                },
-                {
-                        name: 'dateCreated',
-                        template: '{{currentDate}}',
-                        enabled: true
-                },
-                {
-                        name: 'reading-status',
-                        template: 'to-read',
-                        enabled: true
-                },
-                {
-                        name: 'aliases',
-                        template: '["{{title|sentence}}"]',
-                        enabled: true
-                },
-                {
-                        name: 'author-links',
-                        template: '[{{#authors}}"[[Author/{{.}}]]",{{/authors}}]',
-                        enabled: true
-                },
-                {
                         name: 'attachment',
                         template: '[{{#attachments}}{{.}},{{/attachments}}]',
-                        enabled: true
-                },
-                {
-                        name: 'related',
-                        template: '[{{links}}]',
                         enabled: true
                 }
         ],
