@@ -89,6 +89,25 @@ export abstract class BaseBibliographyModal extends Modal {
     }
 
     /**
+     * Handle adding a URL attachment that should be downloaded into the vault.
+     */
+    protected addDownloadAttachment(): void {
+        const sourceUrl = window.prompt('URL to download and store');
+        if (!sourceUrl?.trim()) return;
+
+        const filename = window.prompt('Filename (optional)') || undefined;
+        const alias = window.prompt('Attachment alias (optional, e.g. SI)') || undefined;
+
+        this.attachmentData.push({
+            type: AttachmentType.DOWNLOAD,
+            url: sourceUrl.trim(),
+            filename: filename?.trim() || undefined,
+            alias: alias?.trim() || undefined
+        });
+        this.updateAttachmentsDisplay();
+    }
+
+    /**
      * Update the attachment list display
      */
     protected updateAttachmentsDisplay(displayEl?: HTMLElement): void {
@@ -108,12 +127,24 @@ export abstract class BaseBibliographyModal extends Modal {
         const list = el.createEl('ul', { cls: 'bibliography-attachments-list' });
         this.attachmentData.forEach((attachment, index) => {
             const li = list.createEl('li');
-            const type = attachment.type === AttachmentType.IMPORT ? 'Import' : 'Link';
+            const type = attachment.type === AttachmentType.IMPORT ? 'Import'
+                : attachment.type === AttachmentType.DOWNLOAD ? 'Download'
+                : 'Link';
             const name = attachment.type === AttachmentType.IMPORT
                 ? (attachment.filename || attachment.file?.name || 'Unknown')
-                : (attachment.path?.split('/').pop() || 'Unknown');
+                : attachment.type === AttachmentType.DOWNLOAD
+                    ? (attachment.filename || attachment.url || 'Unknown')
+                    : (attachment.path?.split('/').pop() || 'Unknown');
 
             li.createSpan({ text: `${type}: ${name}` });
+            const aliasInput = li.createEl('input', {
+                type: 'text',
+                cls: 'bibliography-attachment-alias-input',
+                attr: { placeholder: 'Alias', value: attachment.alias || '' }
+            });
+            aliasInput.onchange = () => {
+                attachment.alias = aliasInput.value.trim() || undefined;
+            };
             li.createEl('button', {
                 text: '×',
                 cls: 'bibliography-remove-attachment-button'
@@ -130,7 +161,7 @@ export abstract class BaseBibliographyModal extends Modal {
     protected createAttachmentButtons(container: HTMLElement): void {
         new Setting(container)
             .setName('Attachments')
-            .setDesc('Import a file or link to an existing vault file')
+            .setDesc('Import a file, link to an existing vault file, or download a URL into the vault')
             .addButton(button => {
                 button.setButtonText('Import file')
                     .onClick(() => this.addImportAttachment());
@@ -138,6 +169,10 @@ export abstract class BaseBibliographyModal extends Modal {
             .addButton(button => {
                 button.setButtonText('Link file')
                     .onClick(() => this.addLinkAttachment());
+            })
+            .addButton(button => {
+                button.setButtonText('Download URL')
+                    .onClick(() => this.addDownloadAttachment());
             });
 
         this.attachmentsDisplayEl = container.createDiv({

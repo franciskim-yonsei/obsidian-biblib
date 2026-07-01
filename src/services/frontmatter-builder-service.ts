@@ -7,6 +7,7 @@ import { processYamlArray } from '../utils/yaml-utils';
 import { DateParser } from '../utils/date-parser';
 import { NameParser } from '../utils/name-parser';
 import { organizeFrontmatter } from '../utils/frontmatter-organization';
+import { CSL_ALL_CSL_FIELDS } from '../utils/csl-variables';
 
 /**
  * Input for building a YAML frontmatter
@@ -16,6 +17,7 @@ export interface FrontmatterInput {
   contributors: Contributor[];
   additionalFields: AdditionalField[]; // Fields not part of core CSL structure
   attachmentPaths?: string[]; // Normalized paths in vault if attachments exist
+  attachmentAliases?: string[]; // Optional aliases aligned with attachmentPaths
   pluginSettings: BibliographyPluginSettings; // To access custom fields, tag etc.
   relatedNotePaths?: string[]; // Paths to related notes
 }
@@ -37,7 +39,7 @@ export class FrontmatterBuilderService {
    */
   async buildYamlFrontmatter(data: FrontmatterInput): Promise<string> {
     try {
-      const { citation, contributors, additionalFields, attachmentPaths, pluginSettings, relatedNotePaths } = data;
+      const { citation, contributors, additionalFields, attachmentPaths, attachmentAliases, pluginSettings, relatedNotePaths } = data;
       const issuedString = DateParser.toStorageString(
         citation.issued ?? DateParser.fromFields(
           citation.year != null ? String(citation.year) : '',
@@ -83,17 +85,17 @@ export class FrontmatterBuilderService {
       // Add contributors to frontmatter, preserving all CSL contributor properties
       this.addContributorsToFrontmatter(frontmatter, contributors);
       
-      // Add additional fields to frontmatter
+      // Preserve standard CSL fields supplied by parsers without accepting
+      // arbitrary custom/additional frontmatter fields.
       this.addAdditionalFieldsToFrontmatter(frontmatter, additionalFields);
-      
-      // Process custom frontmatter fields from plugin settings
-      await this.processCustomFrontmatterFields(
-        frontmatter, 
-        citation, 
-        contributors, 
-        attachmentPaths, 
-        pluginSettings,
-        relatedNotePaths
+
+      this.addBuiltInWorkflowFields(
+        frontmatter,
+        citation,
+        contributors,
+        attachmentPaths,
+        relatedNotePaths,
+        attachmentAliases
       );
       
       const organizedFrontmatter = organizeFrontmatter(
@@ -155,8 +157,8 @@ export class FrontmatterBuilderService {
     additionalFields: AdditionalField[]
   ): void {
     additionalFields.forEach((field) => {
-      // Filter out fields without names or values
-      if (!field.name || field.name.trim() === '') {
+      // Filter out fields without names or values, and reject non-CSL custom fields.
+      if (!field.name || field.name.trim() === '' || !CSL_ALL_CSL_FIELDS.has(field.name)) {
         return;
       }
       
@@ -195,6 +197,72 @@ export class FrontmatterBuilderService {
     });
   }
   
+  private addBuiltInWorkflowFields(
+    frontmatter: Record<string, any>,
+    citation: Citation,
+    contributors: Contributor[],
+    attachmentPaths?: string[],
+    relatedNotePaths?: string[],
+    attachmentAliases?: string[]
+  ): void {
+    if (!frontmatter.year) {
+      const issued = DateParser.parse(citation.issued ?? DateParser.fromFields(
+        citation.year != null ? String(citation.year) : '',
+        citation.month != null ? String(citation.month) : undefined,
+        citation.day != null ? String(citation.day) : undefined
+      ));
+      if (issued?.year) {
+        frontmatter.year = String(issued.year);
+      }
+    }
+
+    if (!frontmatter.dateCreated) {
+      frontmatter.dateCreated = new Date().toISOString().split('T')[0];
+    }
+
+    if (!frontmatter['reading-status']) {
+      frontmatter['reading-status'] = 'to-read';
+    }
+
+    if (!frontmatter.aliases && citation.title) {
+      frontmatter.aliases = [citation.title];
+    }
+
+    if (!frontmatter['author-links']) {
+      const authorLinks = contributors
+        .filter(contributor => contributor.role === 'author')
+        .map(contributor => {
+          if (contributor.literal) return contributor.literal;
+          const family = contributor.family || '';
+          const given = contributor.given || '';
+          return [given, family].filter(Boolean).join(' ');
+        })
+        .filter(Boolean)
+        .map(name => `[[Author/${name}]]`);
+
+      if (authorLinks.length > 0) {
+        frontmatter['author-links'] = authorLinks;
+      }
+    }
+
+    if (attachmentPaths?.length) {
+      frontmatter.attachment = attachmentPaths.map((path, index) => {
+        const alias = attachmentAliases?.[index]?.trim() || this.defaultAttachmentAlias(path);
+        return `[[${path}|${alias}]]`;
+      });
+    }
+
+    if (relatedNotePaths?.length) {
+      frontmatter.related = relatedNotePaths;
+    }
+  }
+
+  private defaultAttachmentAlias(path: string): string {
+    if (path.endsWith('.pdf')) return 'PDF';
+    if (path.endsWith('.epub')) return 'EPUB';
+    return path.split('.').pop()?.toUpperCase() || 'FILE';
+  }
+  
   /**
    * Process custom frontmatter fields from plugin settings
    * @param frontmatter The frontmatter object to modify
@@ -209,7 +277,8 @@ export class FrontmatterBuilderService {
     contributors: Contributor[],
     attachmentPaths?: string[],
     pluginSettings?: BibliographyPluginSettings,
-    relatedNotePaths?: string[]
+    relatedNotePaths?: string[],
+    attachmentAliases?: string[]
   ): Promise<void> {
     if (!pluginSettings?.customFrontmatterFields?.length) {
       return;
@@ -220,7 +289,8 @@ export class FrontmatterBuilderService {
       citation, 
       contributors, 
       attachmentPaths,
-      relatedNotePaths
+      relatedNotePaths,
+      attachmentAliases
     );
     
     // Filter to enabled custom fields

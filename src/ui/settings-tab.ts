@@ -7,10 +7,9 @@ import { renderTemplatesSection } from './settings/templates-section';
 import { renderCitekeyGenerationSection } from './settings/citekey-section';
 import {
 	renderFrontmatterOrganizationSection,
-	renderCustomFrontmatterFieldsSection,
 	renderFavoriteLanguagesSection
 } from './settings/custom-fields-section';
-import { renderDefaultModalFieldsSection, renderEditModalSettingsSection } from './settings/modal-config-section';
+import { renderEditModalSettingsSection } from './settings/modal-config-section';
 import { renderZoteroConnectorSection } from './settings/zotero-section';
 import { renderBibliographyBuilderSection } from './settings/bibliography-export-section';
 
@@ -54,7 +53,7 @@ export class BibliographySettingTab extends PluginSettingTab {
 			{ id: 'files', name: 'File Organization' },
 			{ id: 'templates', name: 'Templates' },
 			{ id: 'citekeys', name: 'Citation Keys' },
-			{ id: 'fields', name: 'Custom Fields' },
+			{ id: 'fields', name: 'Frontmatter' },
 			{ id: 'modal', name: 'Modal Configuration' },
 			{ id: 'zotero', name: 'Zotero Integration' },
 			{ id: 'export', name: 'Bibliography Export' }
@@ -99,11 +98,9 @@ export class BibliographySettingTab extends PluginSettingTab {
 				break;
 			case 'fields':
 				renderFrontmatterOrganizationSection(containerEl, this.plugin, refreshDisplay);
-				renderCustomFrontmatterFieldsSection(containerEl, this.plugin);
 				renderFavoriteLanguagesSection(containerEl, this.plugin, refreshDisplay);
 				break;
 			case 'modal':
-				renderDefaultModalFieldsSection(containerEl, this.plugin, refreshDisplay);
 				renderEditModalSettingsSection(containerEl, this.plugin);
 				break;
 			case 'zotero':

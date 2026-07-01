@@ -10,13 +10,15 @@ export class TemplateVariableBuilderService {
    * @param contributors List of contributors
    * @param attachmentPaths Optional paths to attachments
    * @param relatedNotePaths Optional list of related note paths
+   * @param attachmentAliases Optional wikilink aliases aligned with attachmentPaths
    * @returns Object containing all template variables
    */
   buildVariables(
     citation: Citation, 
     contributors: Contributor[], 
     attachmentPaths?: string[],
-    relatedNotePaths?: string[]
+    relatedNotePaths?: string[],
+    attachmentAliases?: string[]
   ): Record<string, any> {
     // Start with the basic variable set
     const variables: Record<string, any> = {
@@ -53,16 +55,10 @@ export class TemplateVariableBuilderService {
     // Process attachment paths if provided
     if (attachmentPaths && attachmentPaths.length > 0) {
       // For each attachment path, create formatted links
-      const formattedAttachments = attachmentPaths.map(path => {
-        if (path.endsWith('.pdf')) {
-          return `[[${path}|PDF]]`;
-        } else if (path.endsWith('.epub')) {
-          return `[[${path}|EPUB]]`;
-        } else {
-          // Extract file extension for attachment type
-          const extension = path.split('.').pop()?.toUpperCase() || 'FILE';
-          return `[[${path}|${extension}]]`;
-        }
+      const formattedAttachments = attachmentPaths.map((path, index) => {
+        const configuredAlias = attachmentAliases?.[index]?.trim();
+        const alias = configuredAlias || this.defaultAttachmentAlias(path);
+        return `[[${path}|${alias}]]`;
       });
       
       // Set all attachment-related variables
@@ -95,6 +91,12 @@ export class TemplateVariableBuilderService {
     }
 
     return variables;
+  }
+  
+  private defaultAttachmentAlias(path: string): string {
+    if (path.endsWith('.pdf')) return 'PDF';
+    if (path.endsWith('.epub')) return 'EPUB';
+    return path.split('.').pop()?.toUpperCase() || 'FILE';
   }
   
   /**

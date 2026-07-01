@@ -81,13 +81,27 @@ export class NoteCreationService {
     try {
       const { citation, contributors, additionalFields, attachmentData, relatedNotePaths } = inputData;
       
+      // Determine the note path before doing any attachment work. If the note
+      // already exists, reject the entire operation and leave attachments alone.
+      const notePath = this.getLiteratureNotePath(citation.id, citation);
+      const existingFile = this.app.vault.getAbstractFileByPath(notePath);
+      if (existingFile instanceof TFile) {
+        new Notice(`Literature note already exists at ${notePath}.`);
+        return {
+          success: false,
+          error: new Error(`Literature note already exists at ${notePath}`)
+        };
+      }
+      
       // Handle attachments if provided
       const attachmentPaths: string[] = [];
+      const attachmentAliases: string[] = [];
       if (attachmentData && attachmentData.length > 0) {
         for (const attachment of attachmentData) {
           if (attachment.type !== AttachmentType.NONE) {
             let path = '';
-            if (attachment.type === AttachmentType.IMPORT && attachment.file) {
+            if ((attachment.type === AttachmentType.IMPORT && attachment.file) ||
+                (attachment.type === AttachmentType.DOWNLOAD && attachment.url)) {
               path = await this.attachmentManager.importAttachment(attachment, citation.id) || '';
             } else if (attachment.type === AttachmentType.LINK && attachment.path) {
               path = this.attachmentManager.resolveLinkedAttachmentPath(attachment) || '';
@@ -95,6 +109,7 @@ export class NoteCreationService {
             
             if (path) {
               attachmentPaths.push(path);
+              attachmentAliases.push(attachment.alias || '');
             }
           }
         }
@@ -106,23 +121,10 @@ export class NoteCreationService {
         contributors,
         additionalFields,
         attachmentPaths,
+        attachmentAliases,
         relatedNotePaths,
         pluginSettings: this.settings
       });
-      
-      // Determine the note path, passing citation data
-      const notePath = this.getLiteratureNotePath(citation.id, citation);
-      
-      // Check if file already exists
-      const existingFile = this.app.vault.getAbstractFileByPath(notePath);
-      if (existingFile instanceof TFile) {
-        // Throw error if file exists
-        new Notice(`Literature note already exists at ${notePath}.`);
-        return {
-          success: false,
-          error: new Error(`Literature note already exists at ${notePath}`)
-        };
-      }
       
       // Create any necessary folders first
       if (notePath.includes('/')) {
@@ -519,6 +521,7 @@ export class NoteCreationService {
       URL: cslObject.URL || '',
       DOI: cslObject.DOI || '',
       'container-title': cslObject['container-title'] || '',
+      'container-title-short': cslObject['container-title-short'] || '',
       publisher: cslObject.publisher || '',
       'publisher-place': cslObject['publisher-place'] || '',
       edition: cslObject.edition || '',
@@ -536,7 +539,7 @@ export class NoteCreationService {
     // Extract additional fields
     const commonFields = new Set([
       'id', 'type', 'title', 'year', 'month', 'day', 'title-short',
-      'URL', 'DOI', 'container-title', 'publisher', 'publisher-place',
+      'URL', 'DOI', 'container-title', 'container-title-short', 'publisher', 'publisher-place',
       'edition', 'volume', 'number', 'issue', 'page', 'language', 'abstract',
       'issued', 'author', 'editor', 'translator', 'tags', 
       // Skip internal fields

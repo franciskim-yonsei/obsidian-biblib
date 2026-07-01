@@ -1,4 +1,4 @@
-import { App, Notice, Plugin } from 'obsidian';
+import { App, Notice, Plugin, TFile } from 'obsidian';
 import { BibliographyModal } from '../ui/modals/bibliography-modal';
 import { ChapterModal } from '../ui/modals/chapter-modal';
 import { BulkImportModal } from '../ui/modals/bulk-import-modal';
@@ -7,6 +7,7 @@ import { BibliographyPluginSettings, hasLiteratureNoteTag } from '../types/setti
 import { BibliographyBuilder } from '../services/bibliography-builder';
 import { ServiceManager } from './service-manager';
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants';
+import { AttachmentData, AttachmentType } from '../types/citation';
 
 /**
  * Manages command registration for the Bibliography plugin
@@ -77,6 +78,20 @@ export class CommandRegistry {
             },
         });
 
+        // Add attachment to current literature note command
+        this.plugin.addCommand({
+            id: 'add-attachment-to-current-note',
+            name: 'Add attachment to current literature note',
+            checkCallback: (checking) => {
+                const activeFile = this.app.workspace.getActiveFile();
+                if (!activeFile || !this.isLiteratureNote(activeFile)) return false;
+                if (checking) return true;
+
+                this.addAttachmentToCurrentNote(activeFile);
+                return true;
+            },
+        });
+
         // Create book chapter entry command
         this.plugin.addCommand({
             id: 'create-chapter-entry',
@@ -136,6 +151,68 @@ export class CommandRegistry {
                 return true;
             },
         });
+    }
+
+    private isLiteratureNote(file: TFile): boolean {
+        const cache = this.app.metadataCache.getFileCache(file);
+        const frontmatter = cache?.frontmatter;
+        return !!frontmatter && hasLiteratureNoteTag(frontmatter.tags, this.settings.literatureNoteTag);
+    }
+
+    private async addAttachmentToCurrentNote(file: TFile): Promise<void> {
+        const cache = this.app.metadataCache.getFileCache(file);
+        const citekey = cache?.frontmatter?.id || cache?.frontmatter?.citekey || file.basename.replace(/^@/, '');
+        const alias = window.prompt('Attachment alias (optional, e.g. SI)')?.trim() || undefined;
+        const sourceUrl = window.prompt('URL to download and store (leave blank to choose a local file)')?.trim();
+
+        const attachment = sourceUrl
+            ? { type: AttachmentType.DOWNLOAD, url: sourceUrl, alias }
+            : await this.pickLocalAttachment(alias);
+
+        if (!attachment) return;
+
+        const importedPath = await this.serviceManager.getAttachmentManager().importAttachment(attachment, citekey);
+        if (!importedPath) return;
+
+        const linkAlias = alias || this.defaultAttachmentAlias(importedPath);
+        const formattedLink = `[[${importedPath}|${linkAlias}]]`;
+
+        await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+            const existing = frontmatter.attachment;
+            if (Array.isArray(existing)) {
+                if (!existing.includes(formattedLink)) existing.push(formattedLink);
+            } else if (typeof existing === 'string' && existing.trim()) {
+                frontmatter.attachment = existing === formattedLink ? [existing] : [existing, formattedLink];
+            } else {
+                frontmatter.attachment = [formattedLink];
+            }
+        });
+
+        new Notice(`Attachment added to ${file.basename}`);
+    }
+
+    private pickLocalAttachment(alias?: string): Promise<AttachmentData | null> {
+        return new Promise(resolve => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '*/*';
+            input.onchange = () => {
+                const selected = input.files?.[0];
+                resolve(selected ? {
+                    type: AttachmentType.IMPORT,
+                    file: selected,
+                    filename: selected.name,
+                    alias
+                } : null);
+            };
+            input.click();
+        });
+    }
+
+    private defaultAttachmentAlias(path: string): string {
+        if (path.endsWith('.pdf')) return 'PDF';
+        if (path.endsWith('.epub')) return 'EPUB';
+        return path.split('.').pop()?.toUpperCase() || 'FILE';
     }
 
     /**

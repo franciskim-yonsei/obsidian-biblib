@@ -1,17 +1,7 @@
-import { App, Notice, TFile, normalizePath } from 'obsidian';
+import { App, Notice, TFile, normalizePath, requestUrl } from 'obsidian';
 import { BibliographyPluginSettings } from '../types';
-import { AttachmentType } from '../types/citation';
+import { AttachmentData, AttachmentType } from '../types/citation';
 import { ParsedReference } from './reference-parser-service';
-
-/**
- * Input data for attachment import operations
- */
-export interface AttachmentData {
-  type: AttachmentType;
-  file?: File;          // For imported files
-  path?: string;        // For linked files
-  filename?: string;    // For displaying the filename
-}
 
 /**
  * Service responsible for handling all file attachment operations
@@ -187,8 +177,16 @@ export class AttachmentManagerService {
    */
   async importAttachment(attachmentData: AttachmentData, citekey: string): Promise<string | null> {
     try {
-      // Only handle IMPORT type
-      if (attachmentData.type !== AttachmentType.IMPORT || !attachmentData.file) {
+      // Only handle imported files or URL downloads
+      if (attachmentData.type !== AttachmentType.IMPORT && attachmentData.type !== AttachmentType.DOWNLOAD) {
+        return null;
+      }
+
+      const sourceFile = attachmentData.type === AttachmentType.DOWNLOAD
+        ? await this.downloadAttachmentFile(attachmentData)
+        : attachmentData.file;
+
+      if (!sourceFile) {
         return null;
       }
       
@@ -206,7 +204,7 @@ export class AttachmentManagerService {
       }
       
       // Determine target folder and filename
-      const fileExtension = attachmentData.file.name.split('.').pop() || 'file';
+      const fileExtension = sourceFile.name.split('.').pop() || 'file';
       let targetFolderPath = biblibPath;
       
       // Create subfolder if enabled in settings
@@ -270,7 +268,7 @@ export class AttachmentManagerService {
       const attachmentPath = normalizePath(`${targetFolderPath}/${attachmentFilename}`);
       
       // Import the file
-      const arrayBuffer = await attachmentData.file.arrayBuffer();
+      const arrayBuffer = await sourceFile.arrayBuffer();
       await this.app.vault.createBinary(attachmentPath, arrayBuffer);
       new Notice(`Attachment imported to ${attachmentPath}`);
       return attachmentPath;
@@ -281,6 +279,44 @@ export class AttachmentManagerService {
     }
   }
   
+  /**
+   * Download a URL attachment into an in-memory File object before importing it.
+   */
+  private async downloadAttachmentFile(attachmentData: AttachmentData): Promise<File | null> {
+    if (!attachmentData.url) {
+      new Notice('No URL provided for download attachment.');
+      return null;
+    }
+
+    try {
+      const response = await requestUrl({ url: attachmentData.url });
+      const filename = attachmentData.filename || this.filenameFromUrl(attachmentData.url, response.headers?.['content-type']);
+      return new File([response.arrayBuffer], filename, { type: response.headers?.['content-type'] || 'application/octet-stream' });
+    } catch (error) {
+      console.error(`Error downloading attachment from ${attachmentData.url}:`, error);
+      new Notice(`Error downloading attachment: ${attachmentData.url}`);
+      return null;
+    }
+  }
+
+  private filenameFromUrl(sourceUrl: string, contentType?: string): string {
+    try {
+      const parsed = new URL(sourceUrl);
+      const lastSegment = decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop() || 'download');
+      if (lastSegment.includes('.')) {
+        return lastSegment;
+      }
+
+      const extension = contentType?.includes('pdf') ? 'pdf'
+        : contentType?.includes('html') ? 'html'
+        : contentType?.includes('epub') ? 'epub'
+        : 'bin';
+      return `${lastSegment || 'download'}.${extension}`;
+    } catch {
+      return 'download.bin';
+    }
+  }
+
   /**
    * Resolve a linked attachment path (validate it exists)
    * @param attachmentData Data for the linked attachment

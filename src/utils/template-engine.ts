@@ -138,8 +138,10 @@ export class TemplateEngine {
                 result = '_' + result;
             }
             
-            // Allow alphanumerics and Pandoc's permitted punctuation
-            result = result.replace(/[^a-zA-Z0-9_:.#$%&\-+?<>~/]/g, '');
+            // Allow alphanumerics and selected Pandoc-permitted separators.
+            // Dots are deliberately removed so journal abbreviation punctuation
+            // (e.g. "J. Neurosci.") does not affect citekeys.
+            result = result.replace(/\./g, '').replace(/[^a-zA-Z0-9_:#$%&\-+?<>~/]/g, '');
             
             // Remove trailing punctuation (only internal punctuation is allowed)
             result = result.replace(/[:.#$%&\-+?<>~/]+$/g, '');

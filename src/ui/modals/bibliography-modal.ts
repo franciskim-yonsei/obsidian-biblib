@@ -2,11 +2,11 @@ import { App, Notice, Setting, ButtonComponent } from 'obsidian';
 import { NoteSuggestModal } from './note-suggest-modal';
 import { BaseBibliographyModal } from './base-bibliography-modal';
 import { BibliographyPluginSettings } from '../../types/settings';
-import { Contributor, AdditionalField, Citation, AttachmentData, AttachmentType } from '../../types/citation';
+import { Contributor, Citation, AttachmentData, AttachmentType } from '../../types/citation';
 import { CitoidService } from '../../services/api/citoid';
 import { CitationService } from '../../services/citation-service';
 import { CitekeyGenerator } from '../../utils/citekey-generator';
-import { CSL_DATE_FIELDS, CSL_TYPES } from '../../utils/csl-variables';
+import { CSL_ALL_CSL_FIELDS, CSL_DATE_FIELDS, CSL_TYPES } from '../../utils/csl-variables';
 import { NoteCreationService } from '../../services';
 import { DateParser } from '../../utils/date-parser';
 import { NameParser } from '../../utils/name-parser';
@@ -29,6 +29,7 @@ export class BibliographyModal extends BaseBibliographyModal {
     private pageInput: HTMLInputElement;
     private urlInput: HTMLInputElement;
     private containerTitleInput: HTMLInputElement;
+    private containerTitleShortInput: HTMLInputElement;
     private dateInput: HTMLInputElement;
     private publisherInput: HTMLInputElement;
     private publisherPlaceInput: HTMLInputElement;
@@ -228,12 +229,15 @@ export class BibliographyModal extends BaseBibliographyModal {
     private createAttachmentSection(contentEl: HTMLElement) {
         new Setting(contentEl)
             .setName('Attachments')
-            .setDesc('Import a file or link to an existing vault file')
+            .setDesc('Import a file, link to an existing vault file, or download a URL into the vault')
             .addButton(button => {
                 button.setButtonText('Import file').onClick(() => this.addImportAttachment());
             })
             .addButton(button => {
                 button.setButtonText('Link file').onClick(() => this.addLinkAttachment());
+            })
+            .addButton(button => {
+                button.setButtonText('Download URL').onClick(() => this.addDownloadAttachment());
             });
 
         this.attachmentsDisplayEl = contentEl.createDiv({ cls: 'bibliography-attachments-display' });
@@ -246,8 +250,6 @@ export class BibliographyModal extends BaseBibliographyModal {
 
         this.createContributorsSection(formContainer);
         this.createCoreFieldsSection(formContainer);
-        this.createCustomFieldsSection(formContainer);
-        this.createAdditionalFieldsSection(formContainer);
         this.createRelatedNotesSection(formContainer);
         this.createCitekeySection(formContainer);
         this.createActionButtons(formContainer);
@@ -299,15 +301,23 @@ export class BibliographyModal extends BaseBibliographyModal {
 
         // URL
         new Setting(container).setName('URL').setDesc('Web address')
-            .addText(t => { this.urlInput = t.inputEl; t.inputEl.type = 'url'; });
+            .addText(t => { this.urlInput = t.inputEl; t.inputEl.type = 'url'; t.inputEl.addClass('bibliography-input-full'); });
 
         // Container title
         new Setting(container).setName('Container title').setDesc('Journal, book, or website name')
             .addText(t => { this.containerTitleInput = t.inputEl; t.inputEl.addClass('bibliography-input-full'); });
 
+        // Container title short
+        new Setting(container).setName('Container title short').setDesc('Journal abbreviation (e.g., J Neurosci)')
+            .addText(t => { this.containerTitleShortInput = t.inputEl; t.inputEl.addClass('bibliography-input-full'); });
+
         // Date
         new Setting(container).setName('Date').setDesc('Publication date (YYYY, YYYY-MM, or YYYY-MM-DD)')
-            .addText(t => { this.dateInput = t.inputEl; t.setPlaceholder('e.g., 2024, 2024-03, 2024-03-15'); });
+            .addText(t => {
+                this.dateInput = t.inputEl;
+                t.setPlaceholder('e.g., 2024, 2024-03, 2024-03-15');
+                t.inputEl.addEventListener('input', () => this.updateDateValidity());
+            });
 
         // Publisher
         new Setting(container).setName('Publisher').setDesc('Name of publisher')
@@ -483,6 +493,7 @@ export class BibliographyModal extends BaseBibliographyModal {
             this.pageInput.value = cslData.page || '';
             this.urlInput.value = cslData.URL || '';
             this.containerTitleInput.value = cslData['container-title'] || cslData.journal || '';
+            this.containerTitleShortInput.value = cslData['container-title-short'] || cslData.journalAbbreviation || '';
             this.publisherInput.value = cslData.publisher || '';
             this.publisherPlaceInput.value = cslData['publisher-place'] || '';
             this.volumeInput.value = cslData.volume || '';
@@ -498,6 +509,7 @@ export class BibliographyModal extends BaseBibliographyModal {
                 cslData.day?.toString()
             );
             this.dateInput.value = DateParser.toStorageString(issuedValue);
+            this.updateDateValidity();
             
             // Language dropdown
             if (cslData.language) {
@@ -537,9 +549,9 @@ export class BibliographyModal extends BaseBibliographyModal {
                 this.addContributorField('author');
             }
             
-            // Clear existing additional fields
+            // Preserve standard CSL fields that are not represented by primary inputs,
+            // but do not expose arbitrary additional/custom fields in the UI.
             this.additionalFields = [];
-            this.additionalFieldsContainer.empty();
             
             // Populate user-defined default fields if they exist in the CSL data
             this.defaultFieldInputs.forEach((inputEl, fieldName) => {
@@ -573,7 +585,7 @@ export class BibliographyModal extends BaseBibliographyModal {
             // Add any non-standard fields as additional fields
             // Exclude common fields that are already in the form
             const excludedFields = new Set([
-                'id', 'type', 'title', 'title-short', 'page', 'URL', 'container-title',
+                'id', 'type', 'title', 'title-short', 'page', 'URL', 'container-title', 'container-title-short',
                 'publisher', 'publisher-place', 'volume', 'number', 'issue', 'DOI',
                 'abstract', 'issued', 'year', 'month', 'day', 'language', 'edition',
                 'author', 'authors', 'editor', 'translator', 'contributor', 'shortTitle', 'journal',
@@ -587,31 +599,38 @@ export class BibliographyModal extends BaseBibliographyModal {
             this.defaultFieldInputs.forEach((_, fieldName) => {
                 excludedFields.add(fieldName);
             });
-            
-            // Add remaining fields as additional fields
-            let hasAdditionalFields = false;
-            
+
             for (const [key, value] of Object.entries(cslData)) {
-                if (!excludedFields.has(key) && value !== undefined && value !== null) {
-                    hasAdditionalFields = true;
-                    
-                    // Determine field type
-                    let fieldType = 'standard';
-                    if (typeof value === 'number') {
-                        fieldType = 'number';
-                    } else if (CSL_DATE_FIELDS.includes(key) || (typeof value === 'object' && value !== null && 'date-parts' in value)) {
-                        fieldType = 'date';
-                    }
-                    
-                    // Create field in UI (this will also add to internal state)
-                    this.addAdditionalField(key, value, fieldType);
+                if (excludedFields.has(key) || value === undefined || value === null || !CSL_ALL_CSL_FIELDS.has(key)) {
+                    continue;
                 }
+
+                let fieldType = 'standard';
+                if (typeof value === 'number') {
+                    fieldType = 'number';
+                } else if (CSL_DATE_FIELDS.includes(key) || (typeof value === 'object' && value !== null && 'date-parts' in value)) {
+                    fieldType = 'date';
+                }
+
+                this.additionalFields.push({ name: key, value, type: fieldType });
             }
             
         } catch (error) {
             console.error('Error populating form from CSL data:', error);
             new Notice('Error populating form. Some fields may be incomplete.');
         }
+    }
+
+    private isValidStoredDate(value: string): boolean {
+        return value.trim() === '' || /^\d{4}(?:-\d{2}(?:-\d{2})?)?$/.test(value.trim());
+    }
+
+    private updateDateValidity(): boolean {
+        if (!this.dateInput) return true;
+        const isValid = this.isValidStoredDate(this.dateInput.value);
+        this.dateInput.toggleClass('bibliography-input-invalid', !isValid);
+        this.dateInput.title = isValid ? '' : 'Date must be YYYY, YYYY-MM, or YYYY-MM-DD';
+        return isValid;
     }
 
     /**
@@ -732,6 +751,7 @@ export class BibliographyModal extends BaseBibliographyModal {
             page: this.pageInput.value || undefined,
             URL: this.urlInput.value || undefined,
             'container-title': this.containerTitleInput.value || undefined,
+            'container-title-short': this.containerTitleShortInput.value || undefined,
             publisher: this.publisherInput.value || undefined,
             'publisher-place': this.publisherPlaceInput.value || undefined,
             edition: this.editionInput.value || undefined,
@@ -844,6 +864,11 @@ export class BibliographyModal extends BaseBibliographyModal {
         if (!citation.type) {
             isValid = false;
             message += '\n- Type is required';
+        }
+        
+        if (!this.updateDateValidity()) {
+            isValid = false;
+            message += '\n- Date must be YYYY, YYYY-MM, or YYYY-MM-DD';
         }
         
         // ID will be auto-generated if empty

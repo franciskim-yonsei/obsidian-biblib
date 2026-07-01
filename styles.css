@@ -172,12 +172,14 @@
 }
 
 .bibliography-modal .setting-item-control input[type="text"],
+.bibliography-modal .setting-item-control input[type="url"],
 .bibliography-modal .setting-item-control textarea {
   flex: 1;
 }
 
 /* Input field styling */
 .bibliography-modal input[type="text"],
+.bibliography-modal input[type="url"],
 .bibliography-modal textarea,
 .bibliography-modal select {
   background-color: var(--background-modifier-form-field);
@@ -189,6 +191,7 @@
 }
 
 .bibliography-modal input[type="text"]:focus,
+.bibliography-modal input[type="url"]:focus,
 .bibliography-modal textarea:focus,
 .bibliography-modal select:focus {
   border-color: var(--interactive-accent);
@@ -196,8 +199,19 @@
   outline: none;
 }
 
-.bibliography-modal input[type="text"]::placeholder {
+.bibliography-modal input[type="text"]::placeholder,
+.bibliography-modal input[type="url"]::placeholder {
   color: var(--text-faint);
+}
+
+.bibliography-input-invalid {
+  border-color: var(--text-error) !important;
+  box-shadow: 0 0 0 2px rgba(var(--color-red-rgb), 0.2) !important;
+}
+
+.bibliography-attachment-alias-input {
+  margin-left: 8px;
+  max-width: 8em;
 }
 
 /* ==========================================================================

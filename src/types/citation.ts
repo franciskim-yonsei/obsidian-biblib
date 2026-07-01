@@ -343,7 +343,8 @@ export interface ParsedDate {
 export enum AttachmentType {
     NONE = 'none',
     IMPORT = 'import',
-    LINK = 'link'
+    LINK = 'link',
+    DOWNLOAD = 'download'
 }
 
 /**
@@ -353,5 +354,7 @@ export interface AttachmentData {
     type: AttachmentType;
     file?: File;          // For imported files
     path?: string;        // For linked files
+    url?: string;         // For files downloaded from a URL
     filename?: string;    // For displaying the filename
+    alias?: string;       // Optional wikilink alias in frontmatter/templates
 }

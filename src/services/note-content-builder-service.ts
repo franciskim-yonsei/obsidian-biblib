@@ -37,6 +37,7 @@ export class NoteContentBuilderService {
         contributors, 
         additionalFields, 
         attachmentPaths,
+        attachmentAliases,
         pluginSettings, 
         annotationContent,
         relatedNotePaths
@@ -48,6 +49,7 @@ export class NoteContentBuilderService {
         contributors,
         additionalFields,
         attachmentPaths,
+        attachmentAliases,
         pluginSettings,
         relatedNotePaths
       });
@@ -57,7 +59,8 @@ export class NoteContentBuilderService {
         citation, 
         contributors, 
         attachmentPaths,
-        relatedNotePaths
+        relatedNotePaths,
+        attachmentAliases
       );
       
       // Add annotation content to template variables if available

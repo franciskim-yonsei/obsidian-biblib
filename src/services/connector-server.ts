@@ -254,7 +254,7 @@ export class ConnectorServer {
         const prefs = {
             downloadAssociatedFiles: true,
             automaticSnapshots: true,
-            reportActiveURL: false,
+            reportActiveURL: true,
             googleDocsAddNoteEnabled: false,
             googleDocsCitationExplorerEnabled: false,
             supportsAttachmentUpload: true,
@@ -278,8 +278,11 @@ export class ConnectorServer {
         if (!data.items || !Array.isArray(data.items) || data.items.length === 0) { this.sendResponse(res, 400, { error: 'No items provided' }); return; }
 
         const sessionID = data.sessionID || crypto.randomUUID();
-        const uri = data.uri || 'Unknown URI';
+        const uri = data.uri || data.url || data.activeURL || 'Unknown URI';
         const primaryItem = data.items[0];
+        if ((!primaryItem.url || primaryItem.url === '') && uri !== 'Unknown URI') {
+            primaryItem.url = uri;
+        }
 
         // Calculate expected attachment IDs
         const expectedAttachmentIds = new Set<string>();
@@ -304,6 +307,10 @@ export class ConnectorServer {
 
         this.sendResponse(res, 200, { sessionID: sessionID });
         new Notice(`Receiving item from Zotero.`);
+
+        // Do not wait for attachment fetches before opening the Obsidian modal.
+        // Attachments are added later via zotero-additional-attachments.
+        this.dispatchInitialItemEvent(sessionID);
     }
 
     private async handleSaveSnapshot(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -356,6 +363,9 @@ export class ConnectorServer {
 
         this.sendResponse(res, 200, { sessionID: sessionID });
         new Notice(`Receiving snapshot for ${title}.`);
+
+        // Open the modal immediately; the HTML snapshot can arrive later.
+        this.dispatchInitialItemEvent(sessionID);
     }
 
     private async handleSaveAttachment(req: http.IncomingMessage, res: http.ServerResponse, isStandalone: boolean): Promise<void> {
@@ -663,8 +673,9 @@ export class ConnectorServer {
         // Wait briefly to allow any in-progress attachments to be processed
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Check if session is complete
-        const isDone = this.isSessionComplete(session);
+        // Once the modal is open, report the session as done to avoid a stuck
+        // connector UI. Late attachments are still accepted and forwarded.
+        const isDone = session.eventDispatched || this.isSessionComplete(session);
 
         // Build progress items for response
         const progressItems = (session.items || []).map(item => {
@@ -759,27 +770,23 @@ export class ConnectorServer {
         const session = this.sessions.get(sessionID);
         if (!session) return;
         
-        if (session.eventDispatched) return;
-
-        // Check if session is complete
-        if (this.isSessionComplete(session)) {
-            
-            // Get successfully processed files
-            const savedFiles = Object.values(session.attachmentStatus)
-                .filter(status => status.progress === 100 && status.localPath)
-                .map(status => status.localPath!);
-            
-            // Dispatch event
-            this.dispatchZoteroItemEvent(session.items[0], savedFiles, sessionID);
-            
-            // Mark as dispatched but keep the session alive
-            // This is a key change - we don't delete the session here
-            session.eventDispatched = true;
-            this.sessions.set(sessionID, session);
-            
-            // Set up monitoring for additional attachments
-            this.monitorForAdditionalAttachments(sessionID);
+        if (!session.eventDispatched) {
+            this.dispatchInitialItemEvent(sessionID);
         }
+    }
+
+    private dispatchInitialItemEvent(sessionID: string): void {
+        const session = this.sessions.get(sessionID);
+        if (!session || session.eventDispatched) return;
+
+        const savedFiles = Object.values(session.attachmentStatus)
+            .filter(status => status.progress === 100 && status.localPath)
+            .map(status => status.localPath!);
+
+        this.dispatchZoteroItemEvent(session.items[0], savedFiles, sessionID);
+        session.eventDispatched = true;
+        this.sessions.set(sessionID, session);
+        this.monitorForAdditionalAttachments(sessionID);
     }
 
     /**
@@ -787,7 +794,10 @@ export class ConnectorServer {
      */
     private monitorForAdditionalAttachments(sessionID: string): void {
         let checkCount = 0;
-        let lastFileCount = 0;
+        const initialSession = this.sessions.get(sessionID);
+        let lastFileCount = initialSession
+            ? Object.values(initialSession.attachmentStatus).filter(status => status.progress === 100 && status.localPath).length
+            : 0;
         
         
         const monitor = setInterval(() => {

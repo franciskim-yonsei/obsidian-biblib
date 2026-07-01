@@ -6,6 +6,8 @@ import { CslDate, ParsedDate } from '../types/citation';
  *
  * Supported input formats:
  * - YYYY, YYYY-MM, YYYY-MM-DD (with dash or slash separators)
+ * - YYYY-MM-DD HH:MM:SS
+ * - Month-name dates such as Date Mon YYYY, Mon DD YYYY, DD Mon YYYY
  * - CURRENT, CURREN, CURRENT_DATE markers (returns today's date)
  * - CSL date objects with date-parts
  * - Objects with raw property containing date string
@@ -278,44 +280,91 @@ export class DateParser {
             return { raw: String(dateStr) };
         }
 
-        // Strip time component if present (e.g., 2024-01-15T10:30:00)
-        const datePart = dateStr.split('T')[0].trim();
+        // Strip ISO or SQL-style time components (e.g., 2024-01-15T10:30:00 or 2024-01-15 10:30:00)
+        const datePart = dateStr.trim().replace(/[T\s]+\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/, '');
 
         // Try to match YYYY, YYYY-MM, or YYYY-MM-DD (with dash or slash)
         const match = datePart.match(/^(\d{4})(?:[-/](\d{1,2}))?(?:[-/](\d{1,2}))?$/);
 
-        if (!match) {
-            return { raw: dateStr };
-        }
+        if (match) {
+            const year = parseInt(match[1], 10);
+            if (isNaN(year)) {
+                return { raw: dateStr };
+            }
 
-        const year = parseInt(match[1], 10);
-        if (isNaN(year)) {
-            return { raw: dateStr };
-        }
+            const dateParts: number[] = [year];
+            let month: number | undefined;
+            let day: number | undefined;
 
-        const dateParts: number[] = [year];
-        let month: number | undefined;
-        let day: number | undefined;
+            if (match[2]) {
+                month = parseInt(match[2], 10);
+                if (!isNaN(month) && month >= 1 && month <= 12) {
+                    dateParts.push(month);
 
-        if (match[2]) {
-            month = parseInt(match[2], 10);
-            if (!isNaN(month) && month >= 1 && month <= 12) {
-                dateParts.push(month);
-
-                if (match[3]) {
-                    day = parseInt(match[3], 10);
-                    if (!isNaN(day) && day >= 1 && day <= 31) {
-                        dateParts.push(day);
+                    if (match[3]) {
+                        day = parseInt(match[3], 10);
+                        if (!isNaN(day) && day >= 1 && day <= 31) {
+                            dateParts.push(day);
+                        }
                     }
                 }
             }
+
+            return {
+                dateParts,
+                year,
+                month,
+                day
+            };
+        }
+
+        const namedMonthDate = this.parseNamedMonthDate(datePart);
+        if (namedMonthDate) {
+            return namedMonthDate;
+        }
+
+        return { raw: dateStr };
+    }
+
+    private static parseNamedMonthDate(dateStr: string): ParsedDate | undefined {
+        const monthNames: Record<string, number> = {
+            jan: 1, january: 1,
+            feb: 2, february: 2,
+            mar: 3, march: 3,
+            apr: 4, april: 4,
+            may: 5,
+            jun: 6, june: 6,
+            jul: 7, july: 7,
+            aug: 8, august: 8,
+            sep: 9, sept: 9, september: 9,
+            oct: 10, october: 10,
+            nov: 11, november: 11,
+            dec: 12, december: 12
+        };
+
+        const cleaned = dateStr.replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+        const tokens = cleaned.split(' ');
+        const monthIndex = tokens.findIndex(token => monthNames[token.toLowerCase()]);
+        if (monthIndex === -1) return undefined;
+
+        const month = monthNames[tokens[monthIndex].toLowerCase()];
+        const yearToken = tokens.find(token => /^\d{4}$/.test(token));
+        if (!yearToken) return undefined;
+
+        const year = parseInt(yearToken, 10);
+        const dayToken = tokens.find((token, index) => index !== monthIndex && token !== yearToken && /^\d{1,2}$/.test(token));
+        const day = dayToken ? parseInt(dayToken, 10) : undefined;
+
+        const dateParts = [year, month];
+        if (day !== undefined && day >= 1 && day <= 31) {
+            dateParts.push(day);
         }
 
         return {
             dateParts,
             year,
             month,
-            day
+            day: day !== undefined && day >= 1 && day <= 31 ? day : undefined
         };
     }
 }

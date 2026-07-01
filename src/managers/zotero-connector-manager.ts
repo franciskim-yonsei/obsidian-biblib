@@ -279,6 +279,12 @@ export class ZoteroConnectorManager {
                 throw new Error('Failed to parse Zotero data.');
             }
 
+            if (this.requiresAuthor(cslData) && !this.hasAuthor(cslData)) {
+                new Notice('Zotero did not provide author data. Refusing to create a partial literature-note modal; use DOI/identifier lookup instead.');
+                this.resetZoteroProcessing();
+                return;
+            }
+
             // Open bibliography modal with pre-filled data
             // Set openedViaCommand to false since this is opened via Zotero
             const modal = new BibliographyModal(
@@ -328,6 +334,16 @@ export class ZoteroConnectorManager {
             // Reset all Zotero processing state
             this.resetZoteroProcessing();
         }
+    }
+    
+    private hasAuthor(cslData: any): boolean {
+        return Array.isArray(cslData.author) && cslData.author.some((author: any) =>
+            author?.family || author?.given || author?.literal
+        );
+    }
+
+    private requiresAuthor(cslData: any): boolean {
+        return cslData.type !== 'webpage' && cslData.type !== 'post-weblog';
     }
     
     /**
