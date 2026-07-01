@@ -12,7 +12,7 @@ When creating a reference, you can enter an identifier and BibLib will fetch the
 
 ## Templating
 
-BibLib uses a Handlebars-style template engine for generating citekeys, filenames, note content, and custom frontmatter fields. Templates can reference any bibliographic field, apply formatters (case conversion, truncation, abbreviation), use conditionals, and iterate over arrays. This makes it possible to customize how references are named, filed, and structured without modifying the plugin itself.
+BibLib uses a Handlebars-style template engine for generating citekeys, filenames, and note content. Templates can reference bibliographic fields, apply formatters (case conversion, truncation, abbreviation), use conditionals, and iterate over arrays.
 
 See the [Templating](templating-system-guide.md) page for the full syntax and available formatters.
 

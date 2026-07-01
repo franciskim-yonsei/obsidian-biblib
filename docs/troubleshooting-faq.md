@@ -15,10 +15,6 @@ This page provides solutions to common issues.
 4.  Ensure no other application is using the same port (default 23119).
 5.  Check that your firewall is not blocking the connection.
 
-**Q: My custom frontmatter template for an array is not creating a proper YAML list.**
-
-**A:** To create a valid YAML list, the template must start with `[` and end with `]`, and items should be properly quoted and separated by commas.
-
 **Q: Attachments are not being found during bulk import.**
 
 **A:**

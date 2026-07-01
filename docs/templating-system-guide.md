@@ -1,6 +1,6 @@
 # Templating
 
-BibLib uses a template engine with Handlebars/Mustache-style syntax. Templates are used to generate citekeys, filenames, note content, and custom frontmatter field values.
+BibLib uses a template engine with Handlebars/Mustache-style syntax. Templates are used to generate citekeys, filenames, and note content.
 
 ## Template syntax
 
@@ -44,12 +44,6 @@ A header template for note content:
 
 ```
 # {{title}} ({{year}})
-```
-
-A custom frontmatter field for Obsidian aliases:
-
-```
-["{{title|sentence}}", "{{citekey}}"]
 ```
 
 A citekey template using the first author's last name and the year:

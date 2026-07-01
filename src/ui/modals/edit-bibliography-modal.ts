@@ -1,12 +1,10 @@
 import { App, Notice, Setting, TFile, ToggleComponent, stringifyYaml } from 'obsidian';
 import { BibliographyModal } from './bibliography-modal';
 import { BibliographyPluginSettings } from '../../types/settings';
-import { Citation, Contributor, AdditionalField, AttachmentData, AttachmentType } from '../../types/citation';
+import { Citation, Contributor, AttachmentData, AttachmentType } from '../../types/citation';
 import { CitekeyGenerator } from '../../utils/citekey-generator';
 import { TemplateEngine } from '../../utils/template-engine';
-import { processYamlArray } from '../../utils/yaml-utils';
 import {
-    CSL_ALL_CSL_FIELDS,
     CSL_NAME_FIELDS,
     CSL_NUMBER_FIELDS,
     CSL_DATE_FIELDS
@@ -23,12 +21,10 @@ export class EditBibliographyModal extends BibliographyModal {
     
     // Regeneration options
     private regenerateCitekeyOnSave: boolean;
-    private updateCustomFrontmatterOnSave: boolean;
     private regenerateBodyOnSave: boolean;
     
     // Toggle controls
     private regenerateCitekeyToggle: ToggleComponent;
-    private updateCustomFrontmatterToggle: ToggleComponent;
     private regenerateBodyToggle: ToggleComponent;
 
     constructor(
@@ -44,7 +40,6 @@ export class EditBibliographyModal extends BibliographyModal {
 
         // Initialize with settings defaults
         this.regenerateCitekeyOnSave = settings.editRegenerateCitekeyDefault;
-        this.updateCustomFrontmatterOnSave = settings.editUpdateCustomFrontmatterDefault;
         this.regenerateBodyOnSave = settings.editRegenerateBodyDefault;
     }
 
@@ -111,18 +106,6 @@ export class EditBibliographyModal extends BibliographyModal {
                     });
             });
 
-        // Custom frontmatter update toggle
-        new Setting(optionsContainer)
-            .setName('Update templated frontmatter')
-            .setDesc('Re-evaluate custom frontmatter field templates with current data')
-            .addToggle(toggle => {
-                this.updateCustomFrontmatterToggle = toggle;
-                toggle.setValue(this.updateCustomFrontmatterOnSave)
-                    .onChange(value => {
-                        this.updateCustomFrontmatterOnSave = value;
-                    });
-            });
-
         // Note body regeneration toggle with warning
         const bodyRegenerationSetting = new Setting(optionsContainer)
             .setName('Regenerate note body')
@@ -178,7 +161,7 @@ export class EditBibliographyModal extends BibliographyModal {
             if (CSL_NAME_FIELDS.includes(key) && Array.isArray(value)) {
                 contributors[key] = value;
             } else {
-                // Include all fields in cslData so they can be loaded as additional fields
+                // Only primary form-backed fields are used when the modal is populated.
                 cslData[key] = value;
             }
         }
@@ -251,7 +234,7 @@ export class EditBibliographyModal extends BibliographyModal {
             const updatedModalData = {
                 citation: this.getFormValues(),
                 contributors: this.contributors,
-                additionalFields: this.additionalFields,
+                additionalFields: [],
                 attachmentData: this.attachmentData,
                 relatedNotePaths: this.relatedNotePaths
             };
@@ -340,33 +323,6 @@ export class EditBibliographyModal extends BibliographyModal {
                 }
             });
             
-            // Merge additional fields
-            updatedModalData.additionalFields.forEach(field => {
-                // Filter out fields without names
-                if (!field.name || field.name.trim() === '') {
-                    return;
-                }
-                
-                // For date fields, check if value exists and is not empty
-                if (field.type === 'date') {
-                    if (field.value == null || 
-                        (typeof field.value === 'string' && field.value.trim() === '') ||
-                        (typeof field.value === 'object' && (!field.value['date-parts'] || field.value['date-parts'].length === 0))) {
-                        return;
-                    }
-
-                    const storedDate = DateParser.toStorageString(field.value);
-                    if (storedDate) {
-                        finalFrontmatterOutput[field.name] = storedDate;
-                    }
-                } else {
-                    // For non-date fields, check standard empty conditions
-                    if (field.value != null && field.value !== '') {
-                        finalFrontmatterOutput[field.name] = field.value;
-                    }
-                }
-            });
-            
             // Update attachment links
             if (updatedModalData.attachmentData.length > 0) {
                 const attachmentPaths = updatedModalData.attachmentData.map(a => a.path).filter((p): p is string => p !== undefined);
@@ -394,79 +350,7 @@ export class EditBibliographyModal extends BibliographyModal {
                 delete finalFrontmatterOutput.related;
                 delete finalFrontmatterOutput.links;
             }
-            
-            // Update custom frontmatter fields if requested
-            if (this.updateCustomFrontmatterOnSave) {
-                const templateVariableBuilder = new TemplateVariableBuilderService();
-                const templateCitation = {
-                    ...finalFrontmatterOutput,
-                    ...updatedModalData.citation
-                };
 
-                for (const [role, names] of Object.entries(contributorsByRole)) {
-                    if (names.length > 0) {
-                        templateCitation[role] = names;
-                    }
-                }
-
-                const templateVariables = templateVariableBuilder.buildVariables(
-                    templateCitation,
-                    updatedModalData.contributors,
-                    updatedModalData.attachmentData.map(a => a.path).filter((p): p is string => p !== undefined),
-                    updatedModalData.relatedNotePaths
-                );
-                
-                // Process each enabled custom field
-                for (const field of this.settings.customFrontmatterFields) {
-                    if (field.enabled) {
-                        try {
-                            // Never overwrite real CSL fields from a custom template.
-                            // Non-CSL fields should be recomputed when this toggle is enabled.
-                            if (CSL_ALL_CSL_FIELDS.has(field.name) || field.name === 'authors') {
-                                continue;
-                            }
-                            
-                            // Determine if this looks like an array/object template
-                            const isArrayTemplate = field.template.trim().startsWith('[') && 
-                                                   field.template.trim().endsWith(']');
-                            
-                            // Render the template with appropriate options
-                            const renderedValue = TemplateEngine.render(
-                                field.template,
-                                templateVariables, 
-                                { yamlArray: isArrayTemplate }
-                            );
-                            
-                            // Handle different types of rendered values
-                            if ((renderedValue.startsWith('[') && renderedValue.endsWith(']')) || 
-                                (renderedValue.startsWith('{') && renderedValue.endsWith('}'))) {
-                                try {
-                                    // For array templates, process with our shared utility function first
-                                    const processedValue = isArrayTemplate ? processYamlArray(renderedValue) : renderedValue;
-                                    
-                                    // Parse as JSON for arrays and objects
-                                    finalFrontmatterOutput[field.name] = JSON.parse(processedValue);
-                                } catch (e) {
-                                    // Special handling for array templates that should be empty arrays
-                                    if (isArrayTemplate && (renderedValue.trim() === '[]' || renderedValue.trim() === '[ ]')) {
-                                        finalFrontmatterOutput[field.name] = [];
-                                    } else {
-                                        // If JSON parsing fails, store as string
-                                        console.warn(`Failed to parse JSON for field ${field.name}: ${renderedValue}`);
-                                        finalFrontmatterOutput[field.name] = renderedValue;
-                                    }
-                                }
-                            } else {
-                                // For non-JSON values, store directly
-                                finalFrontmatterOutput[field.name] = renderedValue;
-                            }
-                        } catch (error) {
-                            console.error(`Error rendering custom field ${field.name}:`, error);
-                        }
-                    }
-                }
-            }
-            
             const organizedFrontmatter = organizeFrontmatter(
                 finalFrontmatterOutput,
                 this.settings.frontmatterFieldOrder

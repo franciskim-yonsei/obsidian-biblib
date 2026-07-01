@@ -20,7 +20,7 @@ The settings interface is organized into tabs. This page documents each tab and 
 
 ## Templates
 
-**Note content template** — A template for the body of new literature notes. The frontmatter is configured separately through custom fields (see below).
+**Note content template** — A template for the body of new literature notes. Frontmatter uses BibLib's fixed literature-note schema.
 
 This tab also includes a **Template Playground** for testing templates interactively and a built-in guide to the template syntax.
 
@@ -34,7 +34,7 @@ See the [Templating](templating-system-guide.md) page for the full syntax refere
 
 **Minimum citekey length** — If a generated citekey is shorter than this value (default: 6), a random numeric suffix is appended.
 
-## Custom fields
+## Frontmatter
 
 ### Frontmatter organization
 
@@ -44,14 +44,7 @@ This affects:
 - new literature notes created by the plugin
 - notes saved through the edit modal
 
-You can define an explicit ordered list of field names such as `id`, `title`, `author`, `issued`, `DOI`, `URL`, `aliases`, or `reading-status`. Any field not listed is still kept, but is appended after the ordered fields. If the list is empty, BibLib keeps its natural generation order.
-
-### Custom frontmatter
-
-Additional fields to include in the YAML frontmatter of new literature notes. Each field has a name and a template for its value. For example, a field named `year` with the template `{{year}}` extracts the publication year into a top-level frontmatter field.
-
-!!! warning
-    Do not define templates for fields that are part of the CSL-JSON standard (like `title`, `author`, or `issued`). Doing so may produce invalid bibliography files.
+You can define an explicit ordered list of field names such as `id`, `title`, `author`, `issued`, `DOI`, `URL`, or `attachment`. Any field not listed is still kept, but is appended after the ordered fields. If the list is empty, BibLib keeps its natural generation order.
 
 ### Favorite languages
 
@@ -59,15 +52,9 @@ Languages that appear at the top of the language dropdown in creation and edit m
 
 ## Modal configuration
 
-### Default modal fields
-
-Controls which CSL-JSON fields appear as primary inputs in the creation modal. The default set covers common fields like title, author, DOI, and abstract. If your workflow regularly uses less common fields (e.g., `archive`, `archive-place`, `archive_location` for archival research), you can add them here so they appear without needing to use the "Add field" button.
-
 ### Edit literature note settings
 
 **Regenerate citekey by default** — Whether the "Regenerate citekey" checkbox is checked by default in the edit modal.
-
-**Update custom frontmatter by default** — Whether custom frontmatter fields are re-evaluated when saving edits.
 
 **Regenerate note body by default** — Whether the note body is replaced with the content template when saving edits. This is off by default to avoid overwriting your annotations.
 

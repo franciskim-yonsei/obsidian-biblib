@@ -1,8 +1,7 @@
 import { App, Modal, Notice, Setting } from 'obsidian';
 import { BibliographyPluginSettings } from '../../types/settings';
-import { Contributor, AdditionalField, AttachmentData, AttachmentType, Citation } from '../../types/citation';
+import { Contributor, AttachmentData, AttachmentType, Citation } from '../../types/citation';
 import { ContributorField } from '../components/contributor-field';
-import { AdditionalFieldComponent } from '../components/additional-field';
 import { FileSuggestModal } from '../components/file-suggest-modal';
 import { NoteSuggestModal } from './note-suggest-modal';
 import { CitationService } from '../../services/citation-service';
@@ -11,7 +10,7 @@ import { NoteCreationService } from '../../services';
 /**
  * Abstract base class for bibliography entry modals.
  * Provides shared state management and UI components for contributors,
- * additional fields, attachments, and related notes.
+ * attachments, and related notes.
  *
  * Subclasses must implement:
  * - onOpen(): Modal-specific form creation
@@ -26,7 +25,6 @@ export abstract class BaseBibliographyModal extends Modal {
     protected settings: BibliographyPluginSettings;
 
     // Shared data state
-    protected additionalFields: AdditionalField[] = [];
     protected contributors: Contributor[] = [];
     protected relatedNotePaths: string[] = [];
     protected attachmentData: AttachmentData[] = [];
@@ -34,7 +32,6 @@ export abstract class BaseBibliographyModal extends Modal {
     // Shared UI element references
     protected attachmentsDisplayEl: HTMLElement;
     protected contributorsListContainer: HTMLDivElement;
-    protected additionalFieldsContainer: HTMLDivElement;
 
     constructor(
         app: App,
@@ -222,44 +219,6 @@ export abstract class BaseBibliographyModal extends Modal {
         );
 
         return contributor;
-    }
-
-    // ========================
-    // ADDITIONAL FIELD METHODS
-    // ========================
-
-    /**
-     * Add an additional field to the UI
-     */
-    protected addAdditionalField(
-        name: string = '',
-        value: unknown = '',
-        type: string = 'standard'
-    ): void {
-        this.additionalFieldsContainer.addClass('bibliography-additional-fields');
-
-        const additionalField: AdditionalField = {
-            name,
-            value,
-            type
-        };
-
-        new AdditionalFieldComponent(
-            this.additionalFieldsContainer,
-            additionalField,
-            (field) => {
-                const index = this.additionalFields.findIndex(f =>
-                    f.name === field.name &&
-                    f.value === field.value &&
-                    f.type === field.type
-                );
-                if (index !== -1) {
-                    this.additionalFields.splice(index, 1);
-                }
-            }
-        );
-
-        this.additionalFields.push(additionalField);
     }
 
     // ========================

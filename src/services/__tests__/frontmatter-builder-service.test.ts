@@ -30,7 +30,7 @@ describe('FrontmatterBuilderService', () => {
     });
 
     expect(yaml).toContain('issued: 2024-03-15');
-    expect(yaml).toContain('accessed: 2026-04-08');
+    expect(yaml).not.toContain('accessed:');
     expect(yaml).toContain('author:');
     expect(yaml).toContain('family: Smith');
     expect(yaml).toContain('given: Jane');
@@ -62,7 +62,7 @@ describe('FrontmatterBuilderService', () => {
     expect(yaml).toContain('container-title-short: Nat.Commun.');
   });
 
-  it('does not write workflow fields that are not enabled as custom frontmatter fields', async () => {
+  it('writes built-in attachment links without custom frontmatter settings', async () => {
     const service = new FrontmatterBuilderService(new TemplateVariableBuilderService());
 
     const yaml = await service.buildYamlFrontmatter({
@@ -76,18 +76,13 @@ describe('FrontmatterBuilderService', () => {
         { role: 'author', family: 'Groves', given: 'Andrew K.' },
         { role: 'author', family: 'Bronner-Fraser', given: 'Marianne' }
       ],
-      additionalFields: [],
+      additionalFields: [
+        { name: 'ISSN', type: 'standard', value: '0950-1991' },
+        { name: 'PMID', type: 'standard', value: '10903174' },
+        { name: 'source', type: 'standard', value: 'journals.biologists.com' }
+      ],
       attachmentPaths: ['Attachments/groves.bronner-fraser_2000_Development/groves_bronner-fraser_2000_Development.pdf'],
-      pluginSettings: {
-        ...DEFAULT_SETTINGS,
-        customFrontmatterFields: [
-          {
-            name: 'attachment',
-            template: '[{{#attachments}}{{.}},{{/attachments}}]',
-            enabled: true
-          }
-        ]
-      }
+      pluginSettings: DEFAULT_SETTINGS
     });
 
     expect(yaml).toContain('attachment:');
@@ -97,6 +92,9 @@ describe('FrontmatterBuilderService', () => {
     expect(yaml).not.toContain('author-links:');
     expect(yaml).not.toContain('dateCreated:');
     expect(yaml).not.toContain('year:');
+    expect(yaml).not.toContain('ISSN:');
+    expect(yaml).not.toContain('PMID:');
+    expect(yaml).not.toContain('source:');
   });
 
   it('applies the configured frontmatter field order before serializing YAML', async () => {
@@ -123,28 +121,25 @@ describe('FrontmatterBuilderService', () => {
       attachmentPaths: [],
       pluginSettings: {
         ...DEFAULT_SETTINGS,
-        frontmatterFieldOrder: ['title', 'id', 'author', 'accessed', 'DOI', 'tags']
+        frontmatterFieldOrder: ['title', 'id', 'author', 'DOI', 'tags']
       }
     });
 
     const titleIndex = yaml.indexOf('title: Ordered Reference');
     const idIndex = yaml.indexOf('id: example2026');
     const authorIndex = yaml.indexOf('author:');
-    const accessedIndex = yaml.indexOf('accessed: 2026-04-08');
     const doiIndex = yaml.indexOf('DOI: 10.1234/example');
     const tagsIndex = yaml.indexOf('tags:');
 
     expect(titleIndex).toBeGreaterThanOrEqual(0);
     expect(idIndex).toBeGreaterThanOrEqual(0);
     expect(authorIndex).toBeGreaterThanOrEqual(0);
-    expect(accessedIndex).toBeGreaterThanOrEqual(0);
     expect(doiIndex).toBeGreaterThanOrEqual(0);
     expect(tagsIndex).toBeGreaterThanOrEqual(0);
 
     expect(titleIndex).toBeLessThan(idIndex);
     expect(idIndex).toBeLessThan(authorIndex);
-    expect(authorIndex).toBeLessThan(accessedIndex);
-    expect(accessedIndex).toBeLessThan(doiIndex);
+    expect(authorIndex).toBeLessThan(doiIndex);
     expect(doiIndex).toBeLessThan(tagsIndex);
   });
 });

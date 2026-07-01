@@ -17,7 +17,7 @@ export function renderTemplatesSection(
     // Introduction to template system
     const templateIntro = containerEl.createEl('div', { cls: 'setting-item-description' });
     templateIntro.createEl('p', {
-        text: 'BibLib uses a powerful template system across all content. Templates use a Mustache-like syntax for literature notes, filenames, and frontmatter fields.'
+        text: 'BibLib uses a powerful template system for literature-note bodies and filenames. Templates use a Mustache-like syntax.'
     });
 
     // Add template guide FIRST

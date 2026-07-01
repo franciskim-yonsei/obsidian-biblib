@@ -472,7 +472,7 @@ status: unread  # or: reading, read, cited
 ---
 ```
 
-You can add this as a custom frontmatter field in BibLib's settings.
+Add this manually to notes where you want to track reading state.
 
 ### Adding Custom Views
 

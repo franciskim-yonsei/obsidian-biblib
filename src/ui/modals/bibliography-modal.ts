@@ -6,7 +6,7 @@ import { Contributor, Citation, AttachmentData, AttachmentType } from '../../typ
 import { CitoidService } from '../../services/api/citoid';
 import { CitationService } from '../../services/citation-service';
 import { CitekeyGenerator } from '../../utils/citekey-generator';
-import { CSL_ALL_CSL_FIELDS, CSL_DATE_FIELDS, CSL_TYPES } from '../../utils/csl-variables';
+import { CSL_TYPES } from '../../utils/csl-variables';
 import { NoteCreationService } from '../../services';
 import { DateParser } from '../../utils/date-parser';
 import { NameParser } from '../../utils/name-parser';
@@ -41,7 +41,6 @@ export class BibliographyModal extends BaseBibliographyModal {
     private abstractInput: HTMLTextAreaElement;
 
     // Storage for user-defined default field inputs
-    private defaultFieldInputs: Map<string, HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement> = new Map();
 
     // Flag for whether the modal is initialized
     private isInitialized: boolean = false;
@@ -377,23 +376,6 @@ export class BibliographyModal extends BaseBibliographyModal {
             .addTextArea(t => { this.abstractInput = t.inputEl; t.inputEl.rows = 4; t.inputEl.addClass('bibliography-input-full'); });
     }
 
-    private createCustomFieldsSection(container: HTMLElement): void {
-        if (this.settings.defaultModalFields?.length) {
-            container.createEl('h4', { text: 'Custom fields' });
-            const fieldsContainer = container.createDiv({ cls: 'bibliography-default-fields' });
-            this.createDefaultFields(fieldsContainer);
-        }
-    }
-
-    private createAdditionalFieldsSection(container: HTMLElement): void {
-        container.createEl('h4', { text: 'Additional fields' });
-        this.additionalFieldsContainer = container.createDiv({ cls: 'bibliography-additional-fields' });
-
-        new ButtonComponent(container)
-            .setButtonText('Add field')
-            .onClick(() => this.addAdditionalField('', '', 'standard'));
-    }
-
     private createRelatedNotesSection(container: HTMLElement): void {
         const displayEl = container.createDiv({ cls: 'bibliography-related-notes-display' });
 
@@ -549,71 +531,9 @@ export class BibliographyModal extends BaseBibliographyModal {
                 this.addContributorField('author');
             }
             
-            // Preserve standard CSL fields that are not represented by primary inputs,
-            // but do not expose arbitrary additional/custom fields in the UI.
-            this.additionalFields = [];
+            // Provider-supplied fields that are not represented by primary inputs
+            // are intentionally ignored to keep literature-note frontmatter fixed.
             
-            // Populate user-defined default fields if they exist in the CSL data
-            this.defaultFieldInputs.forEach((inputEl, fieldName) => {
-                if (cslData[fieldName] !== undefined && cslData[fieldName] !== null) {
-                    const value = cslData[fieldName];
-                    
-                    if (inputEl instanceof HTMLInputElement && inputEl.type === 'checkbox') {
-                        inputEl.checked = !!value;
-                    } else if (inputEl instanceof HTMLInputElement && inputEl.type === 'date') {
-                        // Handle CSL date format
-                        let dateString = '';
-                        if (typeof value === 'string') {
-                            dateString = value;
-                        } else if (value && typeof value === 'object' && 'date-parts' in value && value['date-parts'][0]) {
-                            const parts = value['date-parts'][0];
-                            if (parts.length >= 3) {
-                                dateString = `${parts[0]}-${parts[1].toString().padStart(2, '0')}-${parts[2].toString().padStart(2, '0')}`;
-                            } else if (parts.length >= 2) {
-                                dateString = `${parts[0]}-${parts[1].toString().padStart(2, '0')}-01`;
-                            } else if (parts.length >= 1) {
-                                dateString = `${parts[0]}-01-01`;
-                            }
-                        }
-                        inputEl.value = dateString;
-                    } else if (inputEl instanceof HTMLSelectElement || inputEl instanceof HTMLTextAreaElement || inputEl instanceof HTMLInputElement) {
-                        inputEl.value = value.toString();
-                    }
-                }
-            });
-            
-            // Add any non-standard fields as additional fields
-            // Exclude common fields that are already in the form
-            const excludedFields = new Set([
-                'id', 'type', 'title', 'title-short', 'page', 'URL', 'container-title', 'container-title-short',
-                'publisher', 'publisher-place', 'volume', 'number', 'issue', 'DOI',
-                'abstract', 'issued', 'year', 'month', 'day', 'language', 'edition',
-                'author', 'authors', 'editor', 'translator', 'contributor', 'shortTitle', 'journal',
-                // Skip citation.js internal fields
-                '_graph', '_item', '_attachment', 
-                // Skip non-CSL fields that shouldn't be in frontmatter
-                'annote', 'file', 'attachment'
-            ]);
-            
-            // Also exclude user-defined default fields
-            this.defaultFieldInputs.forEach((_, fieldName) => {
-                excludedFields.add(fieldName);
-            });
-
-            for (const [key, value] of Object.entries(cslData)) {
-                if (excludedFields.has(key) || value === undefined || value === null || !CSL_ALL_CSL_FIELDS.has(key)) {
-                    continue;
-                }
-
-                let fieldType = 'standard';
-                if (typeof value === 'number') {
-                    fieldType = 'number';
-                } else if (CSL_DATE_FIELDS.includes(key) || (typeof value === 'object' && value !== null && 'date-parts' in value)) {
-                    fieldType = 'date';
-                }
-
-                this.additionalFields.push({ name: key, value, type: fieldType });
-            }
             
         } catch (error) {
             console.error('Error populating form from CSL data:', error);
@@ -631,111 +551,6 @@ export class BibliographyModal extends BaseBibliographyModal {
         this.dateInput.toggleClass('bibliography-input-invalid', !isValid);
         this.dateInput.title = isValid ? '' : 'Date must be YYYY, YYYY-MM, or YYYY-MM-DD';
         return isValid;
-    }
-
-    /**
-     * Create user-defined default fields
-     */
-    private createDefaultFields(container: HTMLElement): void {
-        this.settings.defaultModalFields.forEach(fieldConfig => {
-            const setting = new Setting(container)
-                .setName(fieldConfig.label)
-                .setDesc(fieldConfig.description || '');
-
-            let inputEl: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-
-            switch (fieldConfig.type) {
-                case 'text':
-                    setting.addText(text => {
-                        inputEl = text.inputEl;
-                        if (fieldConfig.placeholder) text.setPlaceholder(fieldConfig.placeholder);
-                        if (fieldConfig.defaultValue) text.setValue(fieldConfig.defaultValue.toString());
-                        return text;
-                    });
-                    break;
-
-                case 'textarea':
-                    setting.addTextArea(textarea => {
-                        inputEl = textarea.inputEl;
-                        if (fieldConfig.placeholder) textarea.setPlaceholder(fieldConfig.placeholder);
-                        if (fieldConfig.defaultValue) textarea.setValue(fieldConfig.defaultValue.toString());
-                        textarea.inputEl.rows = 3;
-                        return textarea;
-                    });
-                    break;
-
-                case 'number':
-                    setting.addText(text => {
-                        inputEl = text.inputEl;
-                        text.inputEl.type = 'number';
-                        if (fieldConfig.placeholder) text.setPlaceholder(fieldConfig.placeholder);
-                        if (fieldConfig.defaultValue) text.setValue(fieldConfig.defaultValue.toString());
-                        return text;
-                    });
-                    break;
-
-                case 'date':
-                    setting.addText(text => {
-                        inputEl = text.inputEl;
-                        text.inputEl.type = 'date';
-                        
-                        // Handle CSL date format for default value
-                        if (fieldConfig.defaultValue) {
-                            let dateString = '';
-                            const defaultVal = fieldConfig.defaultValue;
-                            
-                            if (typeof defaultVal === 'string') {
-                                dateString = defaultVal;
-                            } else if (typeof defaultVal === 'object' && defaultVal && 'date-parts' in defaultVal) {
-                                const parts = (defaultVal as any)['date-parts'][0];
-                                if (parts && parts.length >= 3) {
-                                    dateString = `${parts[0]}-${parts[1].toString().padStart(2, '0')}-${parts[2].toString().padStart(2, '0')}`;
-                                } else if (parts && parts.length >= 2) {
-                                    dateString = `${parts[0]}-${parts[1].toString().padStart(2, '0')}-01`;
-                                } else if (parts && parts.length >= 1) {
-                                    dateString = `${parts[0]}-01-01`;
-                                }
-                            }
-                            
-                            text.setValue(dateString);
-                        }
-                        return text;
-                    });
-                    break;
-
-                case 'toggle':
-                    setting.addToggle(toggle => {
-                        // For toggle, we'll store the checkbox element
-                        inputEl = toggle.toggleEl as any;
-                        if (fieldConfig.defaultValue) toggle.setValue(fieldConfig.defaultValue as boolean);
-                        return toggle;
-                    });
-                    break;
-
-                case 'dropdown':
-                    setting.addDropdown(dropdown => {
-                        inputEl = dropdown.selectEl;
-                        if (fieldConfig.options) {
-                            fieldConfig.options.forEach(opt => {
-                                dropdown.addOption(opt.value, opt.text);
-                            });
-                        }
-                        if (fieldConfig.defaultValue) dropdown.setValue(fieldConfig.defaultValue.toString());
-                        return dropdown;
-                    });
-                    break;
-            }
-
-            // Store the input element for later retrieval
-            if (inputEl!) {
-                this.defaultFieldInputs.set(fieldConfig.name, inputEl);
-            }
-
-            // Add required indicator if needed
-            if (fieldConfig.required) {
-                setting.nameEl.createSpan({ text: ' *', cls: 'required-indicator' });
-            }
-        });
     }
 
     /**
@@ -809,40 +624,6 @@ export class BibliographyModal extends BaseBibliographyModal {
             }
         }
         
-        // Add values from user-defined default fields
-        this.defaultFieldInputs.forEach((inputEl, fieldName) => {
-            let value: any;
-            
-            if (inputEl instanceof HTMLInputElement && inputEl.type === 'checkbox') {
-                value = inputEl.checked;
-            } else if (inputEl instanceof HTMLInputElement && inputEl.type === 'date') {
-                // Handle date fields with CSL format conversion
-                const dateValue = inputEl.value;
-                if (dateValue) {
-                    const dateMatch = dateValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-                    if (dateMatch) {
-                        value = {
-                            'date-parts': [[
-                                parseInt(dateMatch[1], 10),
-                                parseInt(dateMatch[2], 10),
-                                parseInt(dateMatch[3], 10)
-                            ]]
-                        };
-                    } else {
-                        // Fallback for invalid dates
-                        value = { 'raw': dateValue };
-                    }
-                }
-            } else if (inputEl instanceof HTMLSelectElement || inputEl instanceof HTMLTextAreaElement || inputEl instanceof HTMLInputElement) {
-                value = inputEl.value;
-            }
-            
-            // Only add non-empty values (but allow false for checkboxes)
-            if (value !== undefined && value !== '' && !(inputEl instanceof HTMLInputElement && inputEl.type === 'checkbox' && value === false)) {
-                citation[fieldName] = value;
-            }
-        });
-
         if (!citation.id) {
             citation.id = CitekeyGenerator.generate(citation, this.settings.citekeyOptions);
         }
@@ -900,7 +681,7 @@ export class BibliographyModal extends BaseBibliographyModal {
             const result = await this.noteCreationService.createLiteratureNote({
                 citation,
                 contributors: this.contributors, 
-                additionalFields: this.additionalFields, 
+                additionalFields: [], 
                 attachmentData: this.attachmentData.length > 0 ? this.attachmentData : null,
                 relatedNotePaths: this.relatedNotePaths.length > 0 ? this.relatedNotePaths : undefined
             });

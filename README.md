@@ -92,7 +92,7 @@ This keeps the stored YAML standards-compliant while making day-to-day editing m
 
 ### Templates
 - **Note content template**: Structure for new notes
-- **Custom frontmatter fields**: Additional YAML fields with templated values
+- **Filename template**: Pattern for generated note filenames
 - **Citekey template**: Pattern for generating citekeys (e.g., `{{authors_family.0|lowercase}}{{year}}`)
 
 ### Zotero Connector (Desktop Only)

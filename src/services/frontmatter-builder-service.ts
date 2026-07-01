@@ -1,13 +1,10 @@
 import { stringifyYaml } from 'obsidian';
 import { BibliographyPluginSettings, parseLiteratureNoteTags } from '../types';
 import { Citation, Contributor, AdditionalField } from '../types/citation';
-import { TemplateEngine } from '../utils/template-engine';
 import { TemplateVariableBuilderService } from './template-variable-builder-service';
-import { processYamlArray } from '../utils/yaml-utils';
 import { DateParser } from '../utils/date-parser';
 import { NameParser } from '../utils/name-parser';
 import { organizeFrontmatter } from '../utils/frontmatter-organization';
-import { CSL_ALL_CSL_FIELDS } from '../utils/csl-variables';
 
 /**
  * Input for building a YAML frontmatter
@@ -39,7 +36,7 @@ export class FrontmatterBuilderService {
    */
   async buildYamlFrontmatter(data: FrontmatterInput): Promise<string> {
     try {
-      const { citation, contributors, additionalFields, attachmentPaths, attachmentAliases, pluginSettings, relatedNotePaths } = data;
+      const { citation, contributors, attachmentPaths, attachmentAliases, pluginSettings, relatedNotePaths } = data;
       const issuedString = DateParser.toStorageString(
         citation.issued ?? DateParser.fromFields(
           citation.year != null ? String(citation.year) : '',
@@ -85,19 +82,7 @@ export class FrontmatterBuilderService {
       // Add contributors to frontmatter, preserving all CSL contributor properties
       this.addContributorsToFrontmatter(frontmatter, contributors);
       
-      // Preserve standard CSL fields supplied by parsers without accepting
-      // arbitrary custom/additional frontmatter fields.
-      this.addAdditionalFieldsToFrontmatter(frontmatter, additionalFields);
-
-      await this.processCustomFrontmatterFields(
-        frontmatter,
-        citation,
-        contributors,
-        attachmentPaths,
-        pluginSettings,
-        relatedNotePaths,
-        attachmentAliases
-      );
+      this.addBuiltInAttachmentFields(frontmatter, attachmentPaths, attachmentAliases, relatedNotePaths);
       
       const organizedFrontmatter = organizeFrontmatter(
         frontmatter,
@@ -148,161 +133,27 @@ export class FrontmatterBuilderService {
     });
   }
   
-  /**
-   * Add additional fields to frontmatter object
-   * @param frontmatter The frontmatter object to modify
-   * @param additionalFields Array of additional fields to add
-   */
-  private addAdditionalFieldsToFrontmatter(
-    frontmatter: Record<string, any>, 
-    additionalFields: AdditionalField[]
-  ): void {
-    additionalFields.forEach((field) => {
-      // Filter out fields without names or values, and reject non-CSL custom fields.
-      if (!field.name || field.name.trim() === '' || !CSL_ALL_CSL_FIELDS.has(field.name)) {
-        return;
-      }
-      
-      // For date fields, check if value exists and is not empty
-      if (field.type === 'date') {
-        if (field.value == null || 
-            (typeof field.value === 'string' && field.value.trim() === '') ||
-            (typeof field.value === 'object' && (!field.value['date-parts'] || field.value['date-parts'].length === 0))) {
-          return;
-        }
-      } else {
-        // For non-date fields, check standard empty conditions
-        if (field.value == null || field.value === '') {
-          return;
-        }
-      }
-      
-      let valueToAdd = field.value;
-      
-      // Format value based on field type
-      if (field.type === 'date') {
-        valueToAdd = DateParser.toStorageString(field.value);
-        if (!valueToAdd) {
-          return;
-        }
-      } else if (field.type === 'number') {
-        // Ensure numbers are stored as numbers, not strings
-        // Handle various possible value types for conversion to number
-        const stringValue = String(field.value);
-        const numValue = parseFloat(stringValue);
-        valueToAdd = isNaN(numValue) ? field.value : numValue;
-      }
-      
-      // Add the potentially modified value to frontmatter
-      frontmatter[field.name] = valueToAdd;
-    });
-  }
-  
-  /**
-   * Process custom frontmatter fields from plugin settings
-   * @param frontmatter The frontmatter object to modify
-   * @param citation The citation data
-   * @param contributors Array of contributors
-   * @param attachmentPaths Optional paths to attachments
-   * @param pluginSettings Plugin settings containing custom field definitions
-   */
-  private async processCustomFrontmatterFields(
+  private addBuiltInAttachmentFields(
     frontmatter: Record<string, any>,
-    citation: Citation,
-    contributors: Contributor[],
     attachmentPaths?: string[],
-    pluginSettings?: BibliographyPluginSettings,
-    relatedNotePaths?: string[],
-    attachmentAliases?: string[]
-  ): Promise<void> {
-    if (!pluginSettings?.customFrontmatterFields?.length) {
-      return;
+    attachmentAliases?: string[],
+    relatedNotePaths?: string[]
+  ): void {
+    if (attachmentPaths?.length) {
+      frontmatter.attachment = attachmentPaths.map((path, index) => {
+        const alias = attachmentAliases?.[index]?.trim() || this.defaultAttachmentAlias(path);
+        return `[[${path}|${alias}]]`;
+      });
     }
-    
-    // Build template variables
-    const templateVariables = this.templateVariableBuilder.buildVariables(
-      citation, 
-      contributors, 
-      attachmentPaths,
-      relatedNotePaths,
-      attachmentAliases
-    );
-    
-    // Filter to enabled custom fields
-    const enabledFields = pluginSettings.customFrontmatterFields.filter(field => field.enabled);
-    
-    // Process each enabled custom field
-    for (const field of enabledFields) {
-      // Special case handling for attachment fields with direct passthrough
-      if (field.name === 'pdflink' && field.template === '{{pdflink}}') {
-        if (templateVariables.pdflink?.length > 0) {
-          frontmatter[field.name] = templateVariables.pdflink;
-        }
-        continue;
-      }
-      
-      if (field.name === 'attachment' && field.template === '{{attachment}}') {
-        if (templateVariables.attachments?.length > 0) {
-          frontmatter[field.name] = templateVariables.attachments;
-        }
-        continue;
-      }
-      
-      // Skip if field name already exists in frontmatter (don't overwrite standard fields)
-      if (frontmatter.hasOwnProperty(field.name)) {
-        continue;
-      }
-      
-      // Determine if this looks like an array/object template
-      const isArrayTemplate = field.template.trim().startsWith('[') && 
-                             field.template.trim().endsWith(']');
-      
-      // Render the template with appropriate options
-      const renderedValue = TemplateEngine.render(
-        field.template,
-        templateVariables, 
-        { yamlArray: isArrayTemplate }
-      );
-      
-      // Handle different types of rendered values
-      if ((renderedValue.startsWith('[') && renderedValue.endsWith(']')) || 
-          (renderedValue.startsWith('{') && renderedValue.endsWith('}'))) {
-        try {
-          // For array templates, process with our shared utility function first
-          const processedValue = isArrayTemplate ? processYamlArray(renderedValue) : renderedValue;
-          
-          // Parse as JSON for arrays and objects
-          frontmatter[field.name] = JSON.parse(processedValue);
-        } catch (e) {
-          // Special handling for array templates that should be empty arrays
-          if (isArrayTemplate && (renderedValue.trim() === '[]' || renderedValue.trim() === '[ ]')) {
-            frontmatter[field.name] = [];
-          } else if (isArrayTemplate && 
-                    (renderedValue.includes('{{pdflink}}') || renderedValue.includes('{{attachment}}')) && 
-                    templateVariables.attachments?.length > 0) {
-            // Handle array template containing attachments
-            frontmatter[field.name] = templateVariables.attachments || [];
-          } else {
-            // Use as string if JSON parsing fails and no special case
-            frontmatter[field.name] = renderedValue;
-          }
-        }
-      } else if (renderedValue.trim() === '') {
-        // For truly empty values in array templates, add empty array
-        if (isArrayTemplate) {
-          frontmatter[field.name] = [];
-        }
-        // Otherwise, don't add empty fields at all
-      } else {
-        // If the field value contains variable references that didn't render
-        if (renderedValue.includes('{{pdflink}}') || renderedValue.includes('{{attachment}}')) {
-          // Don't add the field if the template wasn't properly rendered
-          // This indicates the attachment variable wasn't available
-        } else {
-          // Use as string for non-array/object values
-          frontmatter[field.name] = renderedValue;
-        }
-      }
+
+    if (relatedNotePaths?.length) {
+      frontmatter.related = relatedNotePaths;
     }
+  }
+
+  private defaultAttachmentAlias(path: string): string {
+    if (path.endsWith('.pdf')) return 'PDF';
+    if (path.endsWith('.epub')) return 'EPUB';
+    return path.split('.').pop()?.toUpperCase() || 'FILE';
   }
 }

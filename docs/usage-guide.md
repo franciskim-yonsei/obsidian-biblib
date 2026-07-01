@@ -22,7 +22,7 @@ Select the reference type (journal article, book, etc.), add contributors (autho
 
 With a literature note open, run **"BibLib: Edit Literature Note"** from the command palette. The edit modal opens with the note's current metadata pre-filled. After making changes, click **"Save"**.
 
-The edit modal also offers options to regenerate the citekey (using the current template), re-evaluate custom frontmatter fields, and regenerate the note body from the content template. Each of these is optional and controlled by a checkbox in the modal. If the citekey changes and the rename setting is enabled, the file is renamed to match.
+The edit modal also offers options to regenerate the citekey and regenerate the note body from the content template. Each is controlled by a checkbox in the modal. If the citekey changes and the rename setting is enabled, the file is renamed to match.
 
 ## Creating a book chapter note
 

@@ -78,7 +78,7 @@ The `citekey.template` and `filenameTemplate` settings use the same Handlebars-s
 
 ### Custom frontmatter fields
 
-The `customFrontmatterFields` array works the same way as in the Obsidian plugin. Each entry has a `name`, a `template`, and an `enabled` flag. For example, to extract the year into a top-level field:
+The CLI may support `customFrontmatterFields`, but the Obsidian plugin uses a fixed literature-note frontmatter schema. In CLI configs, each entry has a `name`, a `template`, and an `enabled` flag. For example, to extract the year into a top-level field:
 
 ```yaml
 customFrontmatterFields:

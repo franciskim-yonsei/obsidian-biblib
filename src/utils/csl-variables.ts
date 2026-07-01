@@ -1,5 +1,4 @@
-// Central source of CSL field lists for AdditionalFieldComponent
-// and related UI highlighting logic.
+// Central source of CSL field lists and related UI validation logic.
 // Lists are derived from the Citation Style Language specification
 // Appendix A: Variables, plus additional number and date fields.
 // CSL field names are case-sensitive according to the specification,

@@ -87,10 +87,9 @@ export class SettingsManager {
             ...(loadedData.citekeyOptions || {})
         };
 
-        // Ensure customFrontmatterFields exists and is an array
-        if (!Array.isArray(mergedSettings.customFrontmatterFields)) {
-            mergedSettings.customFrontmatterFields = DEFAULT_SETTINGS.customFrontmatterFields;
-        }
+        delete mergedSettings.customFrontmatterFields;
+        delete mergedSettings.defaultModalFields;
+        delete mergedSettings.editUpdateCustomFrontmatterDefault;
 
         mergedSettings.frontmatterFieldOrder = normalizeFrontmatterFieldOrder(loadedData.frontmatterFieldOrder);
 

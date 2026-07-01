@@ -2,7 +2,7 @@ import { App, Notice, Setting, TFile, ButtonComponent } from 'obsidian';
 import { NoteSuggestModal } from './note-suggest-modal';
 import { BaseBibliographyModal } from './base-bibliography-modal';
 import { BibliographyPluginSettings } from '../../types/settings';
-import { Contributor, AdditionalField, Citation, AttachmentData, AttachmentType } from '../../types/citation';
+import { Contributor, Citation, AttachmentData, AttachmentType } from '../../types/citation';
 import { CitekeyGenerator } from '../../utils/citekey-generator';
 import { NameParser } from '../../utils/name-parser';
 import { NoteCreationService, CitationService } from '../../services';
@@ -333,17 +333,6 @@ export class ChapterModal extends BaseBibliographyModal {
             .setButtonText('Add contributor')
             .onClick(() => this.addContributorField('author'));
 
-        // --- Additional Fields Section ---
-        contentEl.createEl('h4', { text: 'Additional fields' });
-        
-        // Container for additional fields
-        this.additionalFieldsContainer = contentEl.createDiv({ cls: 'bibliography-additional-fields' });
-        
-        // Add button to add more fields
-        const addFieldButton = new ButtonComponent(contentEl)
-            .setButtonText('Add field')
-            .onClick(() => this.addAdditionalField('', '', 'standard'));
-            
         // --- Related notes section ---
         contentEl.createEl('h4', { text: 'Related notes' });
         const relatedNotesSetting = new Setting(contentEl)
@@ -573,20 +562,6 @@ export class ChapterModal extends BaseBibliographyModal {
             // Update the display
             this.updateAttachmentsDisplay();
         }
-        
-        // Copy additional fields from book that might be relevant to chapters
-        const relevantFields = ['publisher', 'publisher-place', 'volume', 'edition', 'ISBN'];
-        
-        // Clear existing additional fields
-        this.additionalFields = [];
-        this.additionalFieldsContainer.empty();
-        
-        // Copy relevant fields from book frontmatter
-        for (const field of relevantFields) {
-            if (fm[field]) {
-                this.addAdditionalField(field, fm[field], 'standard');
-            }
-        }
     }
     
     /**
@@ -801,23 +776,11 @@ export class ChapterModal extends BaseBibliographyModal {
                 ...bookContributors
             ];
             
-            // Add book path as additional field
-            const bookPathField: AdditionalField = {
-                name: 'book_path',
-                value: this.selectedBook.path,
-                type: 'standard'
-            };
-            
-            const finalAdditionalFields = [
-                ...this.additionalFields,
-                bookPathField
-            ];
-            
             // Use the noteCreationService to create the chapter
             const result = await this.noteCreationService.createLiteratureNote({
                 citation,
                 contributors: finalContributors,
-                additionalFields: finalAdditionalFields,
+                additionalFields: [],
                 attachmentData: this.attachmentData.length > 0 ? this.attachmentData : null,
                 relatedNotePaths: this.relatedNotePaths.length > 0 ? this.relatedNotePaths : undefined
             });
