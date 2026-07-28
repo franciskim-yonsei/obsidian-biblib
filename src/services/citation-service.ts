@@ -179,30 +179,54 @@ export class CitationService {
         return entry;
     }
 
+    private normalizeFetchedBibTeX(bibtex: string, emptyMessage: string): any {
+        const cite = new Cite(bibtex);
+        const jsonString = cite.get({ style: 'csl', type: 'string' });
+        const data = JSON.parse(jsonString);
+        const entry = Array.isArray(data) ? data[0] : data;
+        return this.normalizeEntry(entry, emptyMessage);
+    }
+
     /**
-     * Fetch normalized CSL-JSON for an identifier (DOI, URL, ISBN) via Citoid (BibTeX)
-     * with a direct PubMed/PMC CSL fallback when Citation.js cannot resolve the identifier.
+     * Fetch normalized CSL-JSON using identifier-specific APIs where possible,
+     * with Citoid and Citation.js as broader fallbacks.
      */
     async fetchNormalized(id: string): Promise<any> {
         try {
-            const bibtex = await this.citoid.fetchBibTeX(id);
-            const cite = new Cite(bibtex);
-            const jsonString = cite.get({ style: 'csl', type: 'string' });
-            const data = JSON.parse(jsonString);
-            const entry = Array.isArray(data) ? data[0] : data;
-
-            return this.normalizeEntry(entry, 'Citoid returned empty or invalid data.');
-        } catch (e: any) {
             const pubMedEntry = await this.citoid.fetchPubMedCsl(id);
             if (pubMedEntry) {
                 if (typeof pubMedEntry.id === 'string' && /^pmid:/i.test(pubMedEntry.id)) {
                     delete pubMedEntry.id;
                 }
-
                 return this.normalizeEntry(pubMedEntry, 'PubMed returned empty or invalid data.');
             }
 
-            console.error(`Error fetching/parsing BibTeX from Citoid for ID [${id}]:`, e);
+            // Citoid often returns richer records than identifier-specific book
+            // APIs, so retain it as the first book lookup while it is available.
+            const citoidBibTeX = await this.citoid.fetchCitoidBibTeX(id);
+            if (citoidBibTeX) {
+                return this.normalizeFetchedBibTeX(citoidBibTeX, 'Citoid returned empty or invalid data.');
+            }
+
+            // A Google Books ISBN page is often translatable even when Citoid's
+            // direct ISBN lookup is unavailable, and can contain richer metadata.
+            const googleBooksBibTeX = await this.citoid.fetchGoogleBooksCitoidBibTeX(id);
+            if (googleBooksBibTeX) {
+                return this.normalizeFetchedBibTeX(googleBooksBibTeX, 'Google Books returned empty or invalid data.');
+            }
+
+            // Resolve valid ISBNs directly through Open Library before invoking
+            // Citation.js, whose Google Books API failure can otherwise prevent
+            // its own Open Library fallback from running.
+            const openLibraryEntry = await this.citoid.fetchOpenLibraryCsl(id);
+            if (openLibraryEntry) {
+                return this.normalizeEntry(openLibraryEntry, 'Open Library returned empty or invalid data.');
+            }
+
+            const fallbackBibTeX = await this.citoid.fetchCitationJsBibTeX(id);
+            return this.normalizeFetchedBibTeX(fallbackBibTeX, 'Fallback lookup returned empty or invalid data.');
+        } catch (e: any) {
+            console.error(`Error fetching citation data for ID [${id}]:`, e);
             new Notice(`Error fetching citation data for ${id}. ${e.message || ''}`);
             throw e;
         }

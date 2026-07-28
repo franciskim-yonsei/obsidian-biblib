@@ -8,7 +8,7 @@ BibLib includes support for book chapters as a distinct reference type. Chapter 
 
 ## Metadata lookup
 
-When creating a reference, you can enter an identifier and BibLib will fetch the bibliographic metadata from an appropriate source. DOIs are resolved via Crossref, ISBNs via Open Library, and PubMed and arXiv IDs via their respective APIs. For URLs, the Citoid service (maintained by the Wikimedia Foundation) extracts metadata from web pages. The fetched data is converted to CSL-JSON and used to populate the creation form.
+When creating a reference, you can enter an identifier and BibLib will fetch bibliographic metadata through a layered lookup. PubMed and PMC identifiers are resolved directly through NCBI. Other identifiers and URLs are first sent to the Citoid service maintained by the Wikimedia Foundation. When Citoid cannot resolve a valid ISBN directly, BibLib tries its Google Books page through Citoid and then queries Open Library directly; DOI, ISBN, and Wikidata lookups can subsequently fall back to Citation.js. arXiv IDs and general URLs depend on Citoid's extraction coverage. The fetched data is converted to CSL-JSON and used to populate the creation form.
 
 ## Templating
 

@@ -23,6 +23,13 @@ Example:
 
 -->
 
+## Fixed
+
+- Added validated Google Books page and direct Open Library fallbacks for valid ISBNs when Citoid cannot resolve the identifier directly
+- Removed the duplicate Citoid request that retried the same endpoint
+- Prevented 10- and 13-digit identifiers from being reinterpreted as PubMed IDs
+- Treat NCBI's empty-array response as no result rather than loading an empty citation
+
 ## Changed
 
 - Added a new **Frontmatter organization** settings UI so you can control the default order of generated YAML frontmatter fields

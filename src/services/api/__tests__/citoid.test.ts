@@ -2,13 +2,11 @@ import { CitoidService } from '../citoid';
 import { requestUrl } from 'obsidian';
 import Cite from 'citation-js';
 
-// Mock obsidian's requestUrl
 jest.mock('obsidian', () => ({
   requestUrl: jest.fn(),
   Notice: jest.fn()
 }));
 
-// Mock citation-js
 jest.mock('citation-js', () => ({
   __esModule: true,
   default: {
@@ -19,7 +17,6 @@ jest.mock('citation-js', () => ({
 const mockRequestUrl = requestUrl as jest.MockedFunction<typeof requestUrl>;
 const mockCiteAsync = Cite.async as jest.MockedFunction<typeof Cite.async>;
 
-// Helper to create mock responses with all required RequestUrlResponse properties
 const mockResponse = (text: string, status = 200) => ({
   text,
   json: {},
@@ -27,6 +24,13 @@ const mockResponse = (text: string, status = 200) => ({
   headers: {} as Record<string, string>,
   arrayBuffer: new ArrayBuffer(0)
 });
+
+const validBibTeX = `@article{smith2023,
+  author = {Smith, John},
+  title = {A Great Paper},
+  year = {2023},
+  journal = {Journal of Testing}
+}`;
 
 describe('CitoidService', () => {
   let service: CitoidService;
@@ -36,20 +40,12 @@ describe('CitoidService', () => {
     service = new CitoidService();
   });
 
-  describe('fetchBibTeX', () => {
-    const validBibTeX = `@article{smith2023,
-  author = {Smith, John},
-  title = {A Great Paper},
-  year = {2023},
-  journal = {Journal of Testing}
-}`;
-
-    it('should fetch BibTeX from Citoid API successfully', async () => {
+  describe('fetchCitoidBibTeX', () => {
+    it('fetches valid BibTeX from Citoid', async () => {
       mockRequestUrl.mockResolvedValueOnce(mockResponse(validBibTeX));
 
-      const result = await service.fetchBibTeX('10.1234/test.doi');
-
-      expect(result).toBe(validBibTeX);
+      await expect(service.fetchCitoidBibTeX(' 10.1234/test.doi ')).resolves.toBe(validBibTeX);
+      expect(mockRequestUrl).toHaveBeenCalledTimes(1);
       expect(mockRequestUrl).toHaveBeenCalledWith({
         url: expect.stringContaining('10.1234%2Ftest.doi'),
         method: 'GET',
@@ -60,148 +56,164 @@ describe('CitoidService', () => {
       });
     });
 
-    it('should trim whitespace from identifier', async () => {
-      mockRequestUrl.mockResolvedValueOnce(mockResponse(validBibTeX));
+    it('accepts leading whitespace in a valid BibTeX response', async () => {
+      const response = `  \n${validBibTeX}`;
+      mockRequestUrl.mockResolvedValueOnce(mockResponse(response));
 
-      await service.fetchBibTeX('  10.1234/test.doi  ');
-
-      expect(mockRequestUrl).toHaveBeenCalledWith({
-        url: expect.stringContaining('10.1234%2Ftest.doi'),
-        method: 'GET',
-        headers: expect.any(Object)
-      });
+      await expect(service.fetchCitoidBibTeX('10.1234/test')).resolves.toBe(response);
+      expect(mockRequestUrl).toHaveBeenCalledTimes(1);
     });
 
-    it('should try fallback endpoint when primary fails', async () => {
-      // First call returns invalid response
+    it('returns null for non-BibTeX content without repeating the same endpoint', async () => {
       mockRequestUrl.mockResolvedValueOnce(mockResponse('Not valid BibTeX'));
 
-      // Second call (fallback) returns valid BibTeX
-      mockRequestUrl.mockResolvedValueOnce(mockResponse(validBibTeX));
-
-      const result = await service.fetchBibTeX('10.1234/test.doi');
-
-      expect(result).toBe(validBibTeX);
-      expect(mockRequestUrl).toHaveBeenCalledTimes(2);
+      await expect(service.fetchCitoidBibTeX('10.1234/test')).resolves.toBeNull();
+      expect(mockRequestUrl).toHaveBeenCalledTimes(1);
     });
 
-    it('should fallback to citation-js when Citoid endpoints fail', async () => {
-      // Both Citoid endpoints fail
-      mockRequestUrl.mockResolvedValueOnce(mockResponse('Invalid'));
-      mockRequestUrl.mockResolvedValueOnce(mockResponse('Also Invalid'));
+    it('returns null after a network error', async () => {
+      mockRequestUrl.mockRejectedValueOnce(new Error('Network error'));
 
-      // citation-js fallback succeeds
+      await expect(service.fetchCitoidBibTeX('10.1234/test')).resolves.toBeNull();
+      expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Citation.js fallback', () => {
+    it('returns valid BibTeX', async () => {
       mockCiteAsync.mockResolvedValueOnce({
         format: jest.fn().mockReturnValue(validBibTeX)
       } as any);
 
-      const result = await service.fetchBibTeX('10.1234/test.doi');
-
-      expect(result).toBe(validBibTeX);
-      expect(mockCiteAsync).toHaveBeenCalledWith('10.1234/test.doi');
+      await expect(service.fetchCitationJsBibTeX('10.1234/test')).resolves.toBe(validBibTeX);
+      expect(mockCiteAsync).toHaveBeenCalledWith('10.1234/test');
     });
 
-    it('should throw when all methods fail', async () => {
-      // Both Citoid endpoints fail
-      mockRequestUrl.mockResolvedValueOnce(mockResponse('Invalid'));
-      mockRequestUrl.mockResolvedValueOnce(mockResponse('Also Invalid'));
-
-      // citation-js also fails
+    it('rejects invalid output', async () => {
       mockCiteAsync.mockResolvedValueOnce({
-        format: jest.fn().mockReturnValue('Still Invalid')
+        format: jest.fn().mockReturnValue('Still invalid')
       } as any);
 
-      await expect(service.fetchBibTeX('10.1234/test.doi')).rejects.toThrow(
-        'All BibTeX fetch methods failed'
+      await expect(service.fetchCitationJsBibTeX('10.1234/test')).rejects.toThrow(
+        'All metadata lookup methods failed'
       );
     });
 
-    it('should throw when citation-js throws an error', async () => {
-      // Both Citoid endpoints fail
+    it('runs after one failed Citoid request', async () => {
       mockRequestUrl.mockResolvedValueOnce(mockResponse('Invalid'));
-      mockRequestUrl.mockResolvedValueOnce(mockResponse('Also Invalid'));
+      mockCiteAsync.mockResolvedValueOnce({
+        format: jest.fn().mockReturnValue(validBibTeX)
+      } as any);
 
-      // citation-js throws error
-      mockCiteAsync.mockRejectedValueOnce(new Error('Network error'));
+      await expect(service.fetchBibTeX('10.1234/test')).resolves.toBe(validBibTeX);
+      expect(mockRequestUrl).toHaveBeenCalledTimes(1);
+      expect(mockCiteAsync).toHaveBeenCalledTimes(1);
+    });
+  });
 
-      await expect(service.fetchBibTeX('10.1234/test.doi')).rejects.toThrow(
-        'All BibTeX fetch methods failed'
-      );
+  describe('fetchGoogleBooksCitoidBibTeX', () => {
+    it('retries a valid ISBN as a Google Books page and validates the response ISBN', async () => {
+      const bookBibTeX = '@book{foley2019, title={Growth and Distribution}, isbn={9780674986428}}';
+      mockRequestUrl.mockResolvedValueOnce(mockResponse(bookBibTeX));
+
+      await expect(service.fetchGoogleBooksCitoidBibTeX('0-674-98642-3')).resolves.toBe(bookBibTeX);
+      expect(mockRequestUrl).toHaveBeenCalledWith(expect.objectContaining({
+        url: expect.stringContaining(encodeURIComponent('https://books.google.com/books?vid=ISBN9780674986428'))
+      }));
     });
 
-    it('should handle network errors from Citoid', async () => {
-      // First Citoid endpoint throws
-      mockRequestUrl.mockRejectedValueOnce(new Error('Network error'));
+    it('rejects generic page metadata that does not contain the requested ISBN', async () => {
+      mockRequestUrl.mockResolvedValueOnce(mockResponse('@misc{generic, title={Enable JavaScript}}'));
 
-      // The service should still return the error since both endpoints might fail
-      await expect(service.fetchBibTeX('10.1234/test.doi')).rejects.toThrow();
+      await expect(service.fetchGoogleBooksCitoidBibTeX('9780674986428')).resolves.toBeNull();
     });
 
-    it('should handle URL identifiers', async () => {
-      mockRequestUrl.mockResolvedValueOnce(mockResponse(validBibTeX));
+    it('does not query Citoid for a non-ISBN identifier', async () => {
+      await expect(service.fetchGoogleBooksCitoidBibTeX('1080520553')).resolves.toBeNull();
+      expect(mockRequestUrl).not.toHaveBeenCalled();
+    });
+  });
 
-      await service.fetchBibTeX('https://example.com/article');
+  describe('fetchOpenLibraryCsl', () => {
+    const openLibraryRecord = {
+      'ISBN:9780674986428': {
+        title: 'Growth and Distribution',
+        subtitle: 'Second Edition',
+        authors: [
+          { name: 'Duncan K. Foley' },
+          { name: 'Thomas R. Michl' },
+          { name: 'Daniele Tavani' }
+        ],
+        number_of_pages: 416,
+        identifiers: {
+          isbn_10: ['0674986423'],
+          isbn_13: ['9780674986428']
+        },
+        publishers: [{ name: 'Harvard University Press' }],
+        publish_date: 'Feb 11, 2019',
+        publish_places: [{ name: 'Cambridge, Massachusetts' }],
+        subjects: [{ name: 'Economic development' }, { name: 'Income distribution' }],
+        url: 'https://openlibrary.org/books/OL27338071M/Growth_and_Distribution'
+      }
+    };
 
+    it('resolves and maps an ISBN-13 record', async () => {
+      mockRequestUrl.mockResolvedValueOnce(mockResponse(JSON.stringify(openLibraryRecord)));
+
+      const result = await service.fetchOpenLibraryCsl('978-0-674-98642-8');
+
+      expect(result).toMatchObject({
+        type: 'book',
+        title: 'Growth and Distribution: Second Edition',
+        ISBN: '9780674986428',
+        edition: 'Second',
+        publisher: 'Harvard University Press',
+        'publisher-place': 'Cambridge, Massachusetts',
+        'number-of-pages': 416,
+        issued: { 'date-parts': [[2019, 2, 11]] }
+      });
+      expect(result?.author).toEqual([
+        { family: 'Foley', given: 'Duncan K.' },
+        { family: 'Michl', given: 'Thomas R.' },
+        { family: 'Tavani', given: 'Daniele' }
+      ]);
       expect(mockRequestUrl).toHaveBeenCalledWith({
-        url: expect.stringContaining('https%3A%2F%2Fexample.com%2Farticle'),
+        url: 'https://openlibrary.org/api/books?bibkeys=ISBN:9780674986428&format=json&jscmd=data',
         method: 'GET',
-        headers: expect.any(Object)
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Obsidian-BibLib'
+        }
       });
     });
 
-    it('should handle ISBN identifiers', async () => {
-      mockRequestUrl.mockResolvedValueOnce(mockResponse(validBibTeX));
+    it('accepts an ISBN prefix and ISBN-10', async () => {
+      const isbn10Record = {
+        'ISBN:0674986423': openLibraryRecord['ISBN:9780674986428']
+      };
+      mockRequestUrl.mockResolvedValueOnce(mockResponse(JSON.stringify(isbn10Record)));
 
-      await service.fetchBibTeX('978-0-13-468599-1');
+      const result = await service.fetchOpenLibraryCsl('ISBN: 0-674-98642-3');
 
-      expect(mockRequestUrl).toHaveBeenCalledWith({
-        url: expect.stringContaining('978-0-13-468599-1'),
-        method: 'GET',
-        headers: expect.any(Object)
-      });
+      expect(result?.ISBN).toBe('0674986423');
+      expect(mockRequestUrl).toHaveBeenCalledTimes(1);
     });
 
-    describe('BibTeX validation', () => {
-      it('should accept BibTeX starting with @article', async () => {
-        const articleBib = '@article{test, author = {Smith}}';
-        mockRequestUrl.mockResolvedValueOnce(mockResponse(articleBib));
+    it('returns null when Open Library has no record', async () => {
+      mockRequestUrl.mockResolvedValueOnce(mockResponse('{}'));
 
-        const result = await service.fetchBibTeX('10.1234/test');
-        expect(result).toBe(articleBib);
-      });
+      await expect(service.fetchOpenLibraryCsl('9780674986428')).resolves.toBeNull();
+    });
 
-      it('should accept BibTeX starting with @book', async () => {
-        const bookBib = '@book{test, author = {Smith}}';
-        mockRequestUrl.mockResolvedValueOnce(mockResponse(bookBib));
-
-        const result = await service.fetchBibTeX('10.1234/test');
-        expect(result).toBe(bookBib);
-      });
-
-      it('should accept BibTeX starting with @inproceedings', async () => {
-        const procBib = '@inproceedings{test, author = {Smith}}';
-        mockRequestUrl.mockResolvedValueOnce(mockResponse(procBib));
-
-        const result = await service.fetchBibTeX('10.1234/test');
-        expect(result).toBe(procBib);
-      });
-
-      it('should accept BibTeX with leading whitespace', async () => {
-        const bibWithWhitespace = '  \n@article{test, author = {Smith}}';
-        mockRequestUrl.mockResolvedValueOnce(mockResponse(bibWithWhitespace));
-
-        // First call has whitespace before @, which fails validation
-        // Should try fallback
-        mockRequestUrl.mockResolvedValueOnce(mockResponse('@article{test, author = {Smith}}'));
-
-        const result = await service.fetchBibTeX('10.1234/test');
-        expect(result).toContain('@article');
-      });
+    it('does not query Open Library for an invalid ISBN or OCLC number', async () => {
+      await expect(service.fetchOpenLibraryCsl('1080520553')).resolves.toBeNull();
+      await expect(service.fetchOpenLibraryCsl('not-an-isbn')).resolves.toBeNull();
+      expect(mockRequestUrl).not.toHaveBeenCalled();
     });
   });
 
   describe('fetchPubMedCsl', () => {
-    it('should fetch CSL for PMID-prefixed identifiers', async () => {
+    it('fetches CSL for PMID-prefixed identifiers', async () => {
       mockRequestUrl.mockResolvedValueOnce(
         mockResponse(JSON.stringify({ id: 'pmid:31209238', title: 'Test article' }))
       );
@@ -219,40 +231,39 @@ describe('CitoidService', () => {
       });
     });
 
-    it('should fetch CSL for bare numeric PubMed identifiers', async () => {
+    it('fetches CSL for a bare numeric PubMed identifier', async () => {
       mockRequestUrl.mockResolvedValueOnce(
         mockResponse(JSON.stringify({ id: 'pmid:31209238', title: 'Test article' }))
       );
 
-      const result = await service.fetchPubMedCsl('31209238');
-
-      expect(result).toEqual({ id: 'pmid:31209238', title: 'Test article' });
-      expect(mockRequestUrl).toHaveBeenCalledWith({
-        url: 'https://api.ncbi.nlm.nih.gov/lit/ctxp/v1/pubmed/?format=csl&id=31209238',
-        method: 'GET',
-        headers: expect.any(Object)
-      });
+      await expect(service.fetchPubMedCsl('31209238')).resolves.toMatchObject({ title: 'Test article' });
     });
 
-    it('should fetch CSL for PMC identifiers', async () => {
+    it('fetches CSL for PMC identifiers', async () => {
       mockRequestUrl.mockResolvedValueOnce(
         mockResponse(JSON.stringify({ id: 'pmid:31281945', title: 'PMC article' }))
       );
 
-      const result = await service.fetchPubMedCsl('PMC6613236');
-
-      expect(result).toEqual({ id: 'pmid:31281945', title: 'PMC article' });
-      expect(mockRequestUrl).toHaveBeenCalledWith({
-        url: 'https://api.ncbi.nlm.nih.gov/lit/ctxp/v1/pmc/?format=csl&id=6613236',
-        method: 'GET',
-        headers: expect.any(Object)
-      });
+      await expect(service.fetchPubMedCsl('PMC6613236')).resolves.toMatchObject({ title: 'PMC article' });
+      expect(mockRequestUrl).toHaveBeenCalledWith(expect.objectContaining({
+        url: 'https://api.ncbi.nlm.nih.gov/lit/ctxp/v1/pmc/?format=csl&id=6613236'
+      }));
     });
 
-    it('should return null for non-PubMed identifiers', async () => {
-      const result = await service.fetchPubMedCsl('10.1234/test.doi');
+    it('treats the NCBI no-result array as no result', async () => {
+      mockRequestUrl.mockResolvedValueOnce(mockResponse('[]'));
 
-      expect(result).toBeNull();
+      await expect(service.fetchPubMedCsl('31209238')).resolves.toBeNull();
+    });
+
+    it('does not reinterpret 10- or 13-digit identifiers as PMIDs', async () => {
+      await expect(service.fetchPubMedCsl('0674986423')).resolves.toBeNull();
+      await expect(service.fetchPubMedCsl('9780674986428')).resolves.toBeNull();
+      expect(mockRequestUrl).not.toHaveBeenCalled();
+    });
+
+    it('returns null for non-PubMed identifiers', async () => {
+      await expect(service.fetchPubMedCsl('10.1234/test.doi')).resolves.toBeNull();
       expect(mockRequestUrl).not.toHaveBeenCalled();
     });
   });

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolve valid ISBNs through a validated Google Books page and direct Open Library fallback when Citoid's identifier lookup fails
+- Stop retrying the same Citoid endpoint and stop treating ISBNs or empty NCBI responses as PubMed records
+
 ### Changed
 
 - Port the inline structured `author` editor from the yaml-struct plugin into BibLib's patched Obsidian Properties UI
